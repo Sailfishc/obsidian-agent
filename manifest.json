@@ -1,0 +1,9 @@
+{
+  "id": "obsidian-agent",
+  "name": "Obsidian Agent",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.5",
+  "description": "AI coding agent embedded in your vault. Multi-provider LLM support (Anthropic, OpenAI, Google, etc.) with full agentic capabilities: file read/write, search, bash commands, and multi-step workflows.",
+  "author": "Zhang Cheng",
+  "isDesktopOnly": true
+}

@@ -1,0 +1,33 @@
+{
+  "name": "obsidian-agent",
+  "version": "0.1.0",
+  "description": "AI coding agent embedded in Obsidian with multi-provider LLM support",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "ai",
+    "agent",
+    "coding-agent"
+  ],
+  "author": "Zhang Cheng",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.27.1",
+    "obsidian": "latest",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@mariozechner/pi-agent-core": "^0.55.1",
+    "@mariozechner/pi-ai": "^0.55.1",
+    "@mariozechner/pi-coding-agent": "^0.55.1",
+    "tslib": "^2.8.1"
+  }
+}
