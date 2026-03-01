@@ -21,13 +21,27 @@ const WELL_KNOWN_PROVIDERS = [
   'zai',
 ];
 
-/** User-friendly labels for provider dropdown */
+/** All provider tabs: well-known + custom-openai */
+const ALL_PROVIDER_TABS = [...WELL_KNOWN_PROVIDERS, 'custom-openai'];
+
+/** User-friendly labels for provider dropdown / tabs */
 const PROVIDER_LABELS: Record<string, string> = {
-  'custom-openai': 'OpenAI-compatible (custom)',
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  google: 'Google',
+  xai: 'xAI',
+  groq: 'Groq',
+  openrouter: 'OpenRouter',
+  mistral: 'Mistral',
+  zai: 'ZAI',
+  'custom-openai': 'Custom',
 };
 
 export class AgentSettingsTab extends PluginSettingTab {
   plugin: ObsidianAgentPlugin;
+
+  /** UI-only state: which provider tab is currently active in the config panel. */
+  private activeProviderTab: string | null = null;
 
   constructor(app: App, plugin: ObsidianAgentPlugin) {
     super(app, plugin);
@@ -39,8 +53,13 @@ export class AgentSettingsTab extends PluginSettingTab {
     containerEl.empty();
     containerEl.addClass('oa-settings');
 
-    this.renderGeneral(containerEl);
-    this.renderApiKeys(containerEl);
+    // Initialize active tab if needed (default to the active provider)
+    if (!this.activeProviderTab) {
+      this.activeProviderTab = this.plugin.settings.general.provider;
+    }
+
+    this.renderModelSection(containerEl);
+    this.renderProviderConfigTabs(containerEl);
     this.renderCustomInstructions(containerEl);
     this.renderSecurity(containerEl);
     this.renderContext(containerEl);
@@ -49,9 +68,9 @@ export class AgentSettingsTab extends PluginSettingTab {
     this.renderBash(containerEl);
   }
 
-  // ── General ─────────────────────────────────────────────────────────────
+  // ── Model Selection (compact card) ──────────────────────────────────────
 
-  private renderGeneral(containerEl: HTMLElement): void {
+  private renderModelSection(containerEl: HTMLElement): void {
     new Setting(containerEl).setName('Model').setHeading();
 
     const isCustomProvider = this.plugin.settings.general.provider === 'custom-openai';
@@ -64,31 +83,20 @@ export class AgentSettingsTab extends PluginSettingTab {
         for (const p of WELL_KNOWN_PROVIDERS) {
           dropdown.addOption(p, PROVIDER_LABELS[p] || p);
         }
-        dropdown.addOption('custom-openai', PROVIDER_LABELS['custom-openai']);
+        dropdown.addOption('custom-openai', 'OpenAI-compatible (custom)');
 
         dropdown.setValue(this.plugin.settings.general.provider);
         dropdown.onChange(async (value) => {
           this.plugin.settings.general.provider = value;
+          // Auto-switch to that provider's tab so the user can configure it
+          this.activeProviderTab = value;
           await this.plugin.saveSettings();
           this.display();
         });
       });
 
     if (isCustomProvider) {
-      // Custom OpenAI-compatible endpoint settings
-      new Setting(containerEl)
-        .setName('Base URL')
-        .setDesc('API endpoint URL (e.g. http://localhost:11434/v1 for Ollama)')
-        .addText(text => {
-          text.setPlaceholder('http://localhost:11434/v1');
-          text.inputEl.style.width = '100%';
-          text.setValue(this.plugin.settings.customOpenAI.baseUrl);
-          text.onChange(async (value) => {
-            this.plugin.settings.customOpenAI.baseUrl = value;
-            await this.plugin.saveSettings();
-          });
-        });
-
+      // For custom-openai, show model ID in the model section (base URL + API key are in provider tab)
       new Setting(containerEl)
         .setName('Model ID')
         .setDesc('Model identifier passed to the API (e.g. llama3.1:8b, gpt-4o)')
@@ -98,20 +106,6 @@ export class AgentSettingsTab extends PluginSettingTab {
           text.setValue(this.plugin.settings.customOpenAI.modelId);
           text.onChange(async (value) => {
             this.plugin.settings.customOpenAI.modelId = value;
-            await this.plugin.saveSettings();
-          });
-        });
-
-      new Setting(containerEl)
-        .setName('API key')
-        .setDesc('Leave empty for local endpoints that don\'t require authentication')
-        .addText(text => {
-          text.inputEl.type = 'password';
-          text.inputEl.style.width = '100%';
-          text.setPlaceholder('(optional)');
-          text.setValue(this.plugin.settings.customOpenAI.apiKey);
-          text.onChange(async (value) => {
-            this.plugin.settings.customOpenAI.apiKey = value;
             await this.plugin.saveSettings();
           });
         });
@@ -153,33 +147,147 @@ export class AgentSettingsTab extends PluginSettingTab {
       });
   }
 
-  // ── API Keys ────────────────────────────────────────────────────────────
+  // ── Provider Config Tabs ────────────────────────────────────────────────
 
-  private renderApiKeys(containerEl: HTMLElement): void {
-    new Setting(containerEl).setName('API Keys').setHeading();
+  /** Check if a provider has its API key configured. */
+  private providerHasConfig(provider: string): boolean {
+    if (provider === 'custom-openai') {
+      return !!(this.plugin.settings.customOpenAI.baseUrl?.trim());
+    }
+    return !!(this.plugin.settings.apiKeys[provider]?.trim());
+  }
+
+  private renderProviderConfigTabs(containerEl: HTMLElement): void {
+    new Setting(containerEl).setName('Provider Configuration').setHeading();
 
     containerEl.createEl('p', {
-      text: 'Set API keys for providers. Alternatively, set environment variables (e.g., ANTHROPIC_API_KEY).',
+      text: 'Configure API keys and endpoints for each provider. You can also set environment variables (e.g., ANTHROPIC_API_KEY).',
       cls: 'setting-item-description oa-settings-description',
     });
 
-    for (const provider of WELL_KNOWN_PROVIDERS) {
-      new Setting(containerEl)
-        .setName(`${provider} API key`)
-        .addText(text => {
-          text.inputEl.type = 'password';
-          text.inputEl.style.width = '100%';
-          text.setValue(this.plugin.settings.apiKeys[provider] || '');
-          text.onChange(async (value) => {
-            if (value.trim()) {
-              this.plugin.settings.apiKeys[provider] = value.trim();
-            } else {
-              delete this.plugin.settings.apiKeys[provider];
-            }
-            await this.plugin.saveSettings();
-          });
-        });
+    // ── Tab bar ──
+    const tabsContainer = containerEl.createDiv({ cls: 'oa-provider-tabs' });
+
+    for (const provider of ALL_PROVIDER_TABS) {
+      const label = PROVIDER_LABELS[provider] || provider;
+      const isActive = this.activeProviderTab === provider;
+      const hasConfig = this.providerHasConfig(provider);
+
+      const tabBtn = tabsContainer.createEl('button', {
+        cls: `oa-provider-tab${isActive ? ' is-active' : ''}${hasConfig ? ' has-config' : ''}`,
+        text: label,
+        attr: { type: 'button' },
+      });
+
+      tabBtn.addEventListener('click', () => {
+        this.activeProviderTab = provider;
+        this.display();
+      });
     }
+
+    // ── Config panel ──
+    const panelEl = containerEl.createDiv({ cls: 'oa-provider-panel' });
+    this.renderProviderPanel(panelEl, this.activeProviderTab || 'anthropic');
+  }
+
+  private renderProviderPanel(panelEl: HTMLElement, provider: string): void {
+    if (provider === 'custom-openai') {
+      this.renderCustomOpenAIPanel(panelEl);
+    } else {
+      this.renderStandardProviderPanel(panelEl, provider);
+    }
+  }
+
+  private renderStandardProviderPanel(panelEl: HTMLElement, provider: string): void {
+    const label = PROVIDER_LABELS[provider] || provider;
+
+    new Setting(panelEl)
+      .setName(`${label} API key`)
+      .setDesc(`Enter your ${label} API key`)
+      .addText(text => {
+        text.inputEl.type = 'password';
+        text.inputEl.style.width = '100%';
+        text.setPlaceholder(`sk-...`);
+        text.setValue(this.plugin.settings.apiKeys[provider] || '');
+        text.onChange(async (value) => {
+          if (value.trim()) {
+            this.plugin.settings.apiKeys[provider] = value.trim();
+          } else {
+            delete this.plugin.settings.apiKeys[provider];
+          }
+          await this.plugin.saveSettings();
+          // Update tab indicator
+          const tabs = this.containerEl.querySelectorAll('.oa-provider-tab');
+          const idx = ALL_PROVIDER_TABS.indexOf(provider);
+          if (idx >= 0 && tabs[idx]) {
+            tabs[idx].toggleClass('has-config', this.providerHasConfig(provider));
+          }
+        });
+      });
+
+    // Show env var hint
+    const envVarName = this.getEnvVarName(provider);
+    if (envVarName) {
+      panelEl.createEl('p', {
+        text: `💡 Alternatively, set the ${envVarName} environment variable.`,
+        cls: 'setting-item-description oa-settings-hint',
+      });
+    }
+  }
+
+  private renderCustomOpenAIPanel(panelEl: HTMLElement): void {
+    new Setting(panelEl)
+      .setName('Base URL')
+      .setDesc('API endpoint URL (e.g. http://localhost:11434/v1 for Ollama)')
+      .addText(text => {
+        text.setPlaceholder('http://localhost:11434/v1');
+        text.inputEl.style.width = '100%';
+        text.setValue(this.plugin.settings.customOpenAI.baseUrl);
+        text.onChange(async (value) => {
+          this.plugin.settings.customOpenAI.baseUrl = value;
+          await this.plugin.saveSettings();
+          // Update tab indicator
+          const tabs = this.containerEl.querySelectorAll('.oa-provider-tab');
+          const idx = ALL_PROVIDER_TABS.indexOf('custom-openai');
+          if (idx >= 0 && tabs[idx]) {
+            tabs[idx].toggleClass('has-config', this.providerHasConfig('custom-openai'));
+          }
+        });
+      });
+
+    new Setting(panelEl)
+      .setName('API key')
+      .setDesc('Leave empty for local endpoints that don\'t require authentication')
+      .addText(text => {
+        text.inputEl.type = 'password';
+        text.inputEl.style.width = '100%';
+        text.setPlaceholder('(optional)');
+        text.setValue(this.plugin.settings.customOpenAI.apiKey);
+        text.onChange(async (value) => {
+          this.plugin.settings.customOpenAI.apiKey = value;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    panelEl.createEl('p', {
+      text: '💡 Select "OpenAI-compatible (custom)" as your Provider above, then set the Model ID in the Model section.',
+      cls: 'setting-item-description oa-settings-hint',
+    });
+  }
+
+  /** Map provider to its environment variable name for the hint. */
+  private getEnvVarName(provider: string): string | null {
+    const envMap: Record<string, string> = {
+      anthropic: 'ANTHROPIC_API_KEY',
+      openai: 'OPENAI_API_KEY',
+      google: 'GOOGLE_API_KEY / GEMINI_API_KEY',
+      xai: 'XAI_API_KEY',
+      groq: 'GROQ_API_KEY',
+      openrouter: 'OPENROUTER_API_KEY',
+      mistral: 'MISTRAL_API_KEY',
+      zai: 'ZAI_API_KEY',
+    };
+    return envMap[provider] || null;
   }
 
   // ── Custom Instructions ─────────────────────────────────────────────────
@@ -240,7 +348,6 @@ export class AgentSettingsTab extends PluginSettingTab {
           });
         });
 
-      // Show Windows blocklist on Windows or always (for completeness)
       if (isWindows) {
         new Setting(containerEl)
           .setName('Blocked commands (Windows)')
@@ -410,7 +517,7 @@ export class AgentSettingsTab extends PluginSettingTab {
     if (this.plugin.settings.inlineEdit.enabled) {
       new Setting(containerEl)
         .setName('Use global model')
-        .setDesc('Use the same model configured in General settings for inline edits')
+        .setDesc('Use the same model configured in Model settings for inline edits')
         .addToggle(toggle => {
           toggle.setValue(this.plugin.settings.inlineEdit.useGlobalModel);
           toggle.onChange(async (value) => {
@@ -421,7 +528,6 @@ export class AgentSettingsTab extends PluginSettingTab {
         });
 
       if (!this.plugin.settings.inlineEdit.useGlobalModel) {
-        // Model override settings
         const override = this.plugin.settings.inlineEdit.modelOverride ?? { provider: 'anthropic', modelId: '' };
 
         new Setting(containerEl)

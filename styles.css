@@ -1004,3 +1004,73 @@
   font-size: 12px;
   color: var(--text-muted);
 }
+
+.oa-settings .oa-settings-hint {
+  margin-top: 4px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Provider Config Tabs ─────────────────────────────────────────────── */
+
+.oa-provider-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.oa-provider-tab {
+  padding: 4px 12px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+  outline: none;
+  position: relative;
+}
+
+.oa-provider-tab:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.oa-provider-tab.is-active {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+
+.oa-provider-tab.is-active:hover {
+  background: var(--interactive-accent-hover);
+  border-color: var(--interactive-accent-hover);
+}
+
+/* Green dot indicator for configured providers */
+.oa-provider-tab.has-config::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-green);
+}
+
+.oa-provider-tab.is-active.has-config::after {
+  background: var(--text-on-accent);
+}
+
+.oa-provider-panel {
+  min-height: 60px;
+  padding: 4px 0;
+}
