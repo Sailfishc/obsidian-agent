@@ -83,6 +83,8 @@ export class ChatView extends ItemView {
       onTriggerContextSearch: () => this.openContextSearch(),
       onRemoveContextFile: (path) => this.removeContextPath(path),
       onOpenContextFile: (path) => this.openFileByPath(path),
+      onModelClick: () => this.showModelPicker(),
+      onThinkingClick: () => this.showThinkingPicker(),
     });
 
     // ── Mount controls into the input area's controls row ────────────────
@@ -536,6 +538,67 @@ export class ChatView extends ItemView {
       high: 'High',
     };
     return map[level] ?? level;
+  }
+
+  // ── Quick model / thinking pickers (popup menus from footer) ─────────
+
+  /** Show popup to switch model. */
+  private async showModelPicker(): Promise<void> {
+    if (this.isStreaming) return;
+
+    const provider = this.plugin.settings.general.provider;
+
+    if (provider === 'custom-openai') {
+      // For custom-openai, there's no model list — just show a notice
+      new Notice('Custom endpoint model is configured in Settings → Model');
+      return;
+    }
+
+    const models = AgentService.getModelsForProvider(provider);
+    if (models.length === 0) {
+      new Notice('No models available for this provider');
+      return;
+    }
+
+    const currentModelId = this.plugin.settings.general.modelId;
+    const items = models.map(m => ({
+      value: m.id,
+      label: m.name || m.id,
+      active: m.id === currentModelId,
+    }));
+
+    const selected = await this.inputArea.showPopupMenu(items, '.oa-status-model');
+    if (selected && selected !== currentModelId) {
+      this.plugin.settings.general.modelId = selected;
+      await this.plugin.saveSettings();
+      this.refreshStatusDisplay();
+    }
+  }
+
+  /** Show popup to change thinking level. */
+  private async showThinkingPicker(): Promise<void> {
+    if (this.isStreaming) return;
+
+    const currentLevel = this.plugin.settings.general.thinkingLevel || 'medium';
+    const levels = [
+      { value: 'high', label: 'High' },
+      { value: 'medium', label: 'Med' },
+      { value: 'low', label: 'Low' },
+      { value: 'minimal', label: 'Minimal' },
+      { value: 'off', label: 'Off' },
+    ];
+
+    const items = levels.map(l => ({
+      ...l,
+      active: l.value === currentLevel,
+    }));
+
+    const selected = await this.inputArea.showPopupMenu(items, '.oa-status-thinking');
+    if (selected && selected !== currentLevel) {
+      this.plugin.settings.general.thinkingLevel = selected as any;
+      await this.plugin.saveSettings();
+      this.refreshStatusDisplay();
+    }
   }
 
   // ── Send / cancel / new chat ──────────────────────────────────────────

@@ -4,6 +4,14 @@ export interface InputAreaCallbacks {
   onTriggerContextSearch?: () => void;
   onRemoveContextFile?: (path: string) => void;
   onOpenContextFile?: (path: string) => void;
+  onModelClick?: () => void;
+  onThinkingClick?: () => void;
+}
+
+export interface PopupMenuItem {
+  value: string;
+  label: string;
+  active?: boolean;
 }
 
 export class InputArea {
@@ -18,6 +26,10 @@ export class InputArea {
   private callbacks: InputAreaCallbacks;
   private streaming = false;
   private contextPaths: string[] = [];
+
+  /** Currently open popup (if any). */
+  private activePopup: HTMLElement | null = null;
+  private dismissHandler: ((e: MouseEvent) => void) | null = null;
 
   constructor(parent: HTMLElement, callbacks: InputAreaCallbacks) {
     this.callbacks = callbacks;
@@ -45,6 +57,16 @@ export class InputArea {
     this.statusEl = footerRow.createDiv({ cls: 'oa-chat-status' });
 
     const buttonGroup = footerRow.createDiv({ cls: 'oa-input-buttons' });
+
+    // Context search button (folder icon)
+    const contextBtn = buttonGroup.createEl('button', {
+      cls: 'oa-btn oa-btn-icon oa-btn-context clickable-icon',
+      attr: { 'aria-label': 'Attach files', type: 'button' },
+    });
+    contextBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>';
+    contextBtn.addEventListener('click', () => {
+      this.callbacks.onTriggerContextSearch?.();
+    });
 
     this.cancelButton = buttonGroup.createEl('button', {
       cls: 'oa-btn oa-btn-cancel',
@@ -103,19 +125,16 @@ export class InputArea {
 
   // ── Controls row accessors ────────────────────────────────────────────
 
-  /** Container for left-side controls (conversation trigger). */
   getControlsLeftEl(): HTMLElement {
     return this.controlsLeftEl;
   }
 
-  /** Container for right-side controls (history, new chat buttons). */
   getControlsRightEl(): HTMLElement {
     return this.controlsRightEl;
   }
 
   // ── Context file chips ────────────────────────────────────────────────
 
-  /** Render context file chips. Pass empty array to clear. */
   setContextFiles(paths: string[]): void {
     this.contextPaths = paths;
     this.contextRowEl.empty();
@@ -131,14 +150,11 @@ export class InputArea {
     const pill = this.contextRowEl.createDiv({ cls: 'oa-context-pill' });
     pill.setAttribute('title', path);
 
-    // File icon
     const iconEl = pill.createSpan({ cls: 'oa-context-pill-icon' });
     iconEl.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
 
-    // File name
     pill.createSpan({ cls: 'oa-context-pill-name', text: fileName });
 
-    // Remove button
     const removeBtn = pill.createEl('button', {
       cls: 'oa-context-pill-remove',
       text: '×',
@@ -148,20 +164,95 @@ export class InputArea {
       this.callbacks.onRemoveContextFile?.(path);
     });
 
-    // Click pill to open the file
     pill.addEventListener('click', () => {
       this.callbacks.onOpenContextFile?.(path);
     });
   }
 
-  // ── Status display ────────────────────────────────────────────────────
+  // ── Status display (clickable model + thinking) ───────────────────────
 
-  /** Update the model/thinking status text in the footer. */
+  /** Update the model/thinking status in the footer. Clickable to open pickers. */
   setStatus(modelLabel: string, thinkingLevel: string): void {
     this.statusEl.empty();
-    this.statusEl.createSpan({ cls: 'oa-status-model', text: modelLabel });
-    this.statusEl.createSpan({ cls: 'oa-status-thinking-label', text: 'Thinking:' });
-    this.statusEl.createSpan({ cls: 'oa-status-thinking-value', text: thinkingLevel });
+
+    // Clickable model label
+    const modelEl = this.statusEl.createSpan({ cls: 'oa-status-model oa-status-clickable', text: modelLabel });
+    modelEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.callbacks.onModelClick?.();
+    });
+
+    // Clickable thinking label
+    const thinkingGroup = this.statusEl.createSpan({ cls: 'oa-status-thinking oa-status-clickable' });
+    thinkingGroup.createSpan({ cls: 'oa-status-thinking-label', text: 'Thinking:' });
+    thinkingGroup.createSpan({ cls: 'oa-status-thinking-value', text: ` ${thinkingLevel}` });
+    thinkingGroup.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.callbacks.onThinkingClick?.();
+    });
+  }
+
+  /**
+   * Show a popup menu anchored to the model status element.
+   * Returns a promise that resolves with the selected value or null if dismissed.
+   */
+  showPopupMenu(items: PopupMenuItem[], anchorSelector: string): Promise<string | null> {
+    this.dismissPopup();
+
+    const anchor = this.statusEl.querySelector(anchorSelector) as HTMLElement;
+    if (!anchor) return Promise.resolve(null);
+
+    return new Promise<string | null>((resolve) => {
+      const popup = document.createElement('div');
+      popup.className = 'oa-popup-menu';
+
+      for (const item of items) {
+        const menuItem = popup.createDiv({
+          cls: `oa-popup-menu-item${item.active ? ' is-active' : ''}`,
+          text: item.label,
+        });
+        menuItem.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.dismissPopup();
+          resolve(item.value);
+        });
+      }
+
+      // Position above the anchor
+      document.body.appendChild(popup);
+      this.activePopup = popup;
+
+      const anchorRect = anchor.getBoundingClientRect();
+      const popupRect = popup.getBoundingClientRect();
+
+      popup.style.position = 'fixed';
+      popup.style.left = `${anchorRect.left}px`;
+      popup.style.top = `${anchorRect.top - popupRect.height - 4}px`;
+      popup.style.zIndex = '1000';
+
+      // Dismiss on click outside
+      this.dismissHandler = (e: MouseEvent) => {
+        if (!popup.contains(e.target as Node)) {
+          this.dismissPopup();
+          resolve(null);
+        }
+      };
+      // Use setTimeout to avoid the current click event triggering immediate dismiss
+      setTimeout(() => {
+        document.addEventListener('click', this.dismissHandler!, true);
+      }, 0);
+    });
+  }
+
+  private dismissPopup(): void {
+    if (this.activePopup) {
+      this.activePopup.remove();
+      this.activePopup = null;
+    }
+    if (this.dismissHandler) {
+      document.removeEventListener('click', this.dismissHandler, true);
+      this.dismissHandler = null;
+    }
   }
 
   // ── Streaming state ───────────────────────────────────────────────────
@@ -181,5 +272,9 @@ export class InputArea {
 
   getElement(): HTMLElement {
     return this.container;
+  }
+
+  destroy(): void {
+    this.dismissPopup();
   }
 }
