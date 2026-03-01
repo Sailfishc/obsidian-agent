@@ -4,6 +4,9 @@
     "paths": {
       "@/*": [
         "src/*"
+      ],
+      "@modelcontextprotocol/sdk/*": [
+        "node_modules/@modelcontextprotocol/sdk/dist/esm/*"
       ]
     },
     "skipLibCheck": true,

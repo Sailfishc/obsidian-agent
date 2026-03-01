@@ -184,6 +184,7 @@ export class StreamRenderer {
 }
 
 function getToolIcon(name: string): string {
+  if (name.startsWith('mcp__')) return '\uD83D\uDD0C';
   switch (name) {
     case 'read': return '\uD83D\uDCC4';
     case 'write': return '\u270D\uFE0F';
@@ -197,10 +198,20 @@ function getToolIcon(name: string): string {
 }
 
 function formatToolName(name: string): string {
+  if (name.startsWith('mcp__')) {
+    const parts = name.split('__');
+    if (parts.length >= 3) {
+      return `MCP ${parts[1]} / ${parts.slice(2).join('__')}`;
+    }
+  }
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
 function getToolInputSummary(name: string, input: Record<string, unknown>): string {
+  if (name.startsWith('mcp__')) {
+    const firstValue = Object.values(input).find(v => typeof v === 'string');
+    return firstValue ? String(firstValue).slice(0, 80) : '';
+  }
   switch (name) {
     case 'read': return (input.file_path || input.filePath || '') as string;
     case 'write': return (input.file_path || input.filePath || '') as string;

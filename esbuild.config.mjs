@@ -42,6 +42,15 @@ const fixImportMetaPost = {
         'Promise.resolve(require("$1"))'
       );
 
+      // Convert require("node:xxx") to require("xxx")
+      // esbuild externalizes node:xxx modules as require("node:xxx") in CJS output,
+      // but Obsidian's Electron may not support the node: prefix in require() calls.
+      // This handles both simple (node:fs) and subpath (node:fs/promises) patterns.
+      code = code.replace(
+        /require\("node:([^"]+)"\)/g,
+        'require("$1")'
+      );
+
       fs.writeFileSync(outfile, code);
     });
   }

@@ -162,7 +162,10 @@ export class ChatView extends ItemView {
       return;
     }
 
-    this.agentService = new AgentService(vaultPath, this.plugin.settings);
+    this.agentService = new AgentService(vaultPath, this.plugin.settings, {
+      manager: this.plugin.mcpManager,
+      adapter: this.plugin.mcpToolAdapter,
+    });
   }
 
   private renderWelcome(): void {
@@ -816,6 +819,11 @@ export class ChatView extends ItemView {
   refreshModelDisplay(): void {
     // Update footer status (model + thinking) — model label lives in input footer now
     this.refreshStatusDisplay();
+  }
+
+  /** Called by main.ts when MCP configuration changes. */
+  onMcpConfigChanged(): void {
+    this.agentService?.reloadMcp();
   }
 
   /** Called by main.ts when settings change. Updates UI and runtime behavior. */

@@ -16,15 +16,24 @@ import { convertToLlm } from '@mariozechner/pi-coding-agent';
 import type { CustomOpenAISettings, ObsidianAgentSettings, QueryContext, StreamChunk } from '../types';
 import { buildVaultSystemPrompt } from '../prompts/systemPrompt';
 import { createVaultTools } from '../tools/vaultTools';
+import type { McpServerManager } from '../mcp/McpServerManager';
+import type { McpToolAdapter } from '../mcp/McpToolAdapter';
+
+export interface McpDependencies {
+  manager: McpServerManager;
+  adapter: McpToolAdapter;
+}
 
 export class AgentService {
   private agent: Agent;
   private vaultPath: string;
   private settings: ObsidianAgentSettings;
+  private mcp: McpDependencies | null;
 
-  constructor(vaultPath: string, settings: ObsidianAgentSettings) {
+  constructor(vaultPath: string, settings: ObsidianAgentSettings, mcp?: McpDependencies) {
     this.vaultPath = vaultPath;
     this.settings = settings;
+    this.mcp = mcp ?? null;
 
     const tools = createVaultTools(vaultPath, {
       blockedCommands: settings.security.blockedCommands,
@@ -174,6 +183,46 @@ export class AgentService {
 
     // Ensure model is current
     this.agent.setModel(model);
+
+    // Compute MCP tools for this query based on @mentions
+    if (this.mcp) {
+      // Always start with vault-only tools (safe baseline)
+      const vaultTools = createVaultTools(this.vaultPath, {
+        blockedCommands: this.settings.security.blockedCommands,
+        enableBlocklist: this.settings.security.enableBlocklist,
+        bashEnabled: this.settings.bash.enabled,
+      });
+      this.agent.setTools(vaultTools);
+
+      try {
+        const mentioned = this.mcp.manager.extractMentions(prompt);
+        const activeServers = this.mcp.manager.getActiveServers(mentioned);
+        const activeServerNames = Object.keys(activeServers);
+        const disallowed = new Set(this.mcp.manager.getDisallowedMcpTools(mentioned));
+
+        if (activeServerNames.length > 0) {
+          console.log(`[MCP] Active servers for this query: ${activeServerNames.join(', ')}` +
+            (mentioned.size > 0 ? ` (@mentioned: ${[...mentioned].join(', ')})` : ''));
+
+          const mcpTools = await this.mcp.adapter.getToolsForActiveServers(activeServers, disallowed);
+          console.log(`[MCP] Loaded ${mcpTools.length} MCP tools from ${activeServerNames.length} server(s)`);
+
+          if (mcpTools.length > 0) {
+            this.agent.setTools([...vaultTools, ...mcpTools]);
+          }
+        } else {
+          const allServers = this.mcp.manager.getServers();
+          const contextSavingServers = this.mcp.manager.getContextSavingServers();
+          if (contextSavingServers.length > 0) {
+            console.log(`[MCP] No active servers. ${contextSavingServers.length} server(s) require @mention: ${contextSavingServers.map(s => '@' + s.name).join(', ')}`);
+          } else if (allServers.length > 0) {
+            console.log(`[MCP] No active servers (${allServers.length} configured but none enabled)`);
+          }
+        }
+      } catch (error) {
+        console.error('[MCP] Failed to load MCP tools, continuing with vault tools only:', error);
+      }
+    }
 
     // Collect chunks via event subscription
     const chunkQueue: StreamChunk[] = [];
@@ -331,6 +380,15 @@ export class AgentService {
     } finally {
       unsubscribe();
       await promptPromise;
+    }
+  }
+
+  /**
+   * Reload MCP configuration. Called when MCP settings change.
+   */
+  async reloadMcp(): Promise<void> {
+    if (this.mcp) {
+      await this.mcp.adapter.reset();
     }
   }
 

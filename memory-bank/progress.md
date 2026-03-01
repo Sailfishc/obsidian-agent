@@ -18,6 +18,17 @@
 - Test framework setup
 - Any features the user requests
 
+## Recent Changes
+- **MCP Support** (2026-03-01): Added full Model Context Protocol server support
+  - Types, storage (.claude/mcp.json), server manager, tester, tool adapter
+  - Bridges MCP tools into pi-mono AgentTool format via Type.Unsafe()
+  - Context-saving mode: servers activated via @mention in prompts
+  - Settings UI: add/edit/delete/toggle/test/import MCP servers
+  - Per-tool enable/disable in test modal
+  - Clipboard import (supports multiple JSON formats)
+  - MCP-aware tool rendering (icon, name formatting, summary)
+  - System prompt updated with MCP guidance
+
 ## Known Issues
 - None documented yet (initial commit)
 
@@ -29,3 +40,6 @@
 | esbuild post-build patches | Required for Obsidian's Electron environment (import.meta, node: imports, electron.asar) |
 | Vault-scoped tools | Security: agent cannot access files outside the vault |
 | No React/Vue | Obsidian convention: vanilla DOM with Obsidian API helpers |
+| MCP config in .claude/mcp.json | Claude Code-compatible format; metadata in _obsidianAgent field |
+| Per-query MCP tool activation | Context-saving servers only load tools when @-mentioned, saving tokens |
+| MCP tools as AgentTool wrappers | Bridges MCP SDK tools into pi-mono via Type.Unsafe() for JSON Schema |

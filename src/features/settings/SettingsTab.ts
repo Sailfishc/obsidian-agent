@@ -1,6 +1,7 @@
 import { type App, PluginSettingTab, Setting } from 'obsidian';
 import type ObsidianAgentPlugin from '../../main';
 import { AgentService } from '../../core/agent/AgentService';
+import { McpSettingsManager } from './mcp/McpSettingsManager';
 
 const THINKING_LEVELS = [
   { value: 'off', label: 'Off' },
@@ -61,6 +62,7 @@ export class AgentSettingsTab extends PluginSettingTab {
     this.renderModelSection(containerEl);
     this.renderProviderConfigTabs(containerEl);
     this.renderCustomInstructions(containerEl);
+    this.renderMcp(containerEl);
     this.renderSecurity(containerEl);
     this.renderContext(containerEl);
     this.renderAppearance(containerEl);
@@ -309,6 +311,20 @@ export class AgentSettingsTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         });
       });
+  }
+
+  // ── MCP ──────────────────────────────────────────────────────────────────
+
+  private renderMcp(containerEl: HTMLElement): void {
+    new Setting(containerEl).setName('MCP Servers').setHeading();
+
+    containerEl.createEl('p', {
+      text: 'Configure Model Context Protocol servers to extend the agent with external tools. Servers with context-saving mode are only activated when @-mentioned.',
+      cls: 'setting-item-description oa-settings-description',
+    });
+
+    const mcpContainer = containerEl.createDiv({ cls: 'oa-mcp-settings' });
+    new McpSettingsManager(mcpContainer, this.plugin);
   }
 
   // ── Security ────────────────────────────────────────────────────────────

@@ -1,6 +1,9 @@
 import { type Editor, type MarkdownView, Notice, Plugin } from 'obsidian';
 import type { ObsidianAgentSettings } from './core/types';
 import { DEFAULT_SETTINGS, VIEW_TYPE_AGENT } from './core/types';
+import { McpStorage } from './core/mcp/McpStorage';
+import { McpServerManager } from './core/mcp/McpServerManager';
+import { McpToolAdapter } from './core/mcp/McpToolAdapter';
 import { ChatView } from './features/chat/ChatView';
 import { InlineEditModal } from './features/inline-edit/InlineEditModal';
 import { AgentSettingsTab } from './features/settings/SettingsTab';
@@ -114,9 +117,18 @@ function normalizeLoadedSettings(loaded: any): ObsidianAgentSettings {
 
 export default class ObsidianAgentPlugin extends Plugin {
   settings: ObsidianAgentSettings;
+  mcpStorage: McpStorage;
+  mcpManager: McpServerManager;
+  mcpToolAdapter: McpToolAdapter;
 
   async onload(): Promise<void> {
     await this.loadSettings();
+
+    // Initialize MCP services
+    this.mcpStorage = new McpStorage(this.app);
+    this.mcpManager = new McpServerManager(this.mcpStorage);
+    this.mcpToolAdapter = new McpToolAdapter();
+    await this.mcpManager.loadServers();
 
     this.registerView(
       VIEW_TYPE_AGENT,
@@ -204,7 +216,24 @@ export default class ObsidianAgentPlugin extends Plugin {
   }
 
   onunload(): void {
+    // Clean up MCP connections
+    this.mcpToolAdapter?.reset();
     // Views are automatically cleaned up by Obsidian
+  }
+
+  /**
+   * Reload MCP server configs from disk and broadcast to all open ChatViews.
+   * Called by McpSettingsManager after any MCP config change.
+   */
+  async reloadMcpServersAndBroadcast(): Promise<void> {
+    await this.mcpManager.loadServers();
+    await this.mcpToolAdapter.reset();
+
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_AGENT);
+    for (const leaf of leaves) {
+      const view = leaf.view as ChatView;
+      view.onMcpConfigChanged?.();
+    }
   }
 
   async loadSettings(): Promise<void> {

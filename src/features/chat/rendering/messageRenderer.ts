@@ -258,6 +258,7 @@ export function renderToolCall(container: HTMLElement, tool: ToolCallInfo): void
 }
 
 function getToolIcon(name: string): string {
+  if (name.startsWith('mcp__')) return '🔌';
   switch (name) {
     case 'read': return '\uD83D\uDCC4';
     case 'write': return '\u270D\uFE0F';
@@ -271,11 +272,22 @@ function getToolIcon(name: string): string {
 }
 
 function formatToolName(name: string): string {
+  if (name.startsWith('mcp__')) {
+    const parts = name.split('__');
+    if (parts.length >= 3) {
+      return `MCP ${parts[1]} / ${parts.slice(2).join('__')}`;
+    }
+  }
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
 function getToolSummary(tool: ToolCallInfo): string {
   const input = tool.input;
+  if (tool.name.startsWith('mcp__')) {
+    // For MCP tools, show first string value of input as summary
+    const firstValue = Object.values(input).find(v => typeof v === 'string');
+    return firstValue ? String(firstValue).slice(0, 80) : '';
+  }
   switch (tool.name) {
     case 'read':
       return input.file_path as string || input.filePath as string || '';
