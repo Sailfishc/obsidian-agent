@@ -5,12 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Development
 
 ```bash
-npm run build      # Production build (esbuild, outputs main.js)
-npm run dev        # Watch mode for development
-npm run typecheck  # TypeScript type checking (tsc --noEmit)
+pnpm run build      # Production build (esbuild, outputs main.js)
+pnpm run dev        # Watch mode for development
+pnpm run typecheck  # TypeScript type checking (tsc --noEmit)
+pnpm test           # Run tests once (vitest run)
+pnpm run test:watch # Watch mode for tests (vitest)
 ```
 
-No test framework is configured. Verify changes by building and loading the plugin in Obsidian.
+Tests use Vitest. Test files are co-located with source files as `*.test.ts`. Focus on testing pure logic modules (blocklist, systemPrompt, utils) that don't depend on Obsidian API.
 
 To test in Obsidian: copy `main.js`, `manifest.json`, `styles.css` to your vault's `.obsidian/plugins/obsidian-agent/`, then reload Obsidian (Cmd+R).
 
