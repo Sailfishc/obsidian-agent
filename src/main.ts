@@ -1,9 +1,10 @@
-import { type Editor, type MarkdownView, Notice, Plugin } from 'obsidian';
+import { type Editor, type MarkdownView, Notice, Plugin, debounce } from 'obsidian';
 import type { ObsidianAgentSettings } from './core/types';
 import { DEFAULT_SETTINGS, VIEW_TYPE_AGENT } from './core/types';
 import { McpStorage } from './core/mcp/McpStorage';
 import { McpServerManager } from './core/mcp/McpServerManager';
 import { McpToolAdapter } from './core/mcp/McpToolAdapter';
+import { SkillManager } from './core/skills/SkillManager';
 import { ChatView } from './features/chat/ChatView';
 import { InlineEditModal } from './features/inline-edit/InlineEditModal';
 import { AgentSettingsTab } from './features/settings/SettingsTab';
@@ -77,6 +78,8 @@ function normalizeLoadedSettings(loaded: any): ObsidianAgentSettings {
 
       bash: JSON.parse(JSON.stringify(DEFAULT_SETTINGS.bash)),
 
+      skills: JSON.parse(JSON.stringify(DEFAULT_SETTINGS.skills)),
+
       apiKeys: loaded.apiKeys && typeof loaded.apiKeys === 'object'
         ? loaded.apiKeys
         : {},
@@ -101,6 +104,7 @@ function normalizeLoadedSettings(loaded: any): ObsidianAgentSettings {
     inlineEdit: deepMerge(DEFAULT_SETTINGS.inlineEdit, loaded.inlineEdit),
     instructions: deepMerge(DEFAULT_SETTINGS.instructions, loaded.instructions),
     bash: deepMerge(DEFAULT_SETTINGS.bash, loaded.bash),
+    skills: deepMerge(DEFAULT_SETTINGS.skills, loaded.skills),
 
     apiKeys: loaded.apiKeys && typeof loaded.apiKeys === 'object'
       ? loaded.apiKeys
@@ -120,6 +124,13 @@ export default class ObsidianAgentPlugin extends Plugin {
   mcpStorage: McpStorage;
   mcpManager: McpServerManager;
   mcpToolAdapter: McpToolAdapter;
+  skillManager: SkillManager;
+
+  /** Debounced skill reload for vault file events (trailing to catch final state). */
+  private debouncedSkillReload = debounce(async () => {
+    await this.skillManager?.reload();
+    this.notifySkillsChanged();
+  }, 500);
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -129,6 +140,24 @@ export default class ObsidianAgentPlugin extends Plugin {
     this.mcpManager = new McpServerManager(this.mcpStorage);
     this.mcpToolAdapter = new McpToolAdapter();
     await this.mcpManager.loadServers();
+
+    // Initialize Skills
+    this.skillManager = new SkillManager(this.app, () => this.settings.skills);
+    await this.skillManager.reload();
+
+    // Watch vault for SKILL.md changes
+    this.registerEvent(this.app.vault.on('create', (file) => {
+      if (file.name === 'SKILL.md') this.debouncedSkillReload();
+    }));
+    this.registerEvent(this.app.vault.on('delete', (file) => {
+      if (file.name === 'SKILL.md') this.debouncedSkillReload();
+    }));
+    this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+      if (file.name === 'SKILL.md' || oldPath.endsWith('SKILL.md')) this.debouncedSkillReload();
+    }));
+    this.registerEvent(this.app.vault.on('modify', (file) => {
+      if (file.name === 'SKILL.md') this.debouncedSkillReload();
+    }));
 
     this.registerView(
       VIEW_TYPE_AGENT,
@@ -233,6 +262,15 @@ export default class ObsidianAgentPlugin extends Plugin {
     for (const leaf of leaves) {
       const view = leaf.view as ChatView;
       view.onMcpConfigChanged?.();
+    }
+  }
+
+  /** Notify all open ChatViews that skills have been reloaded. */
+  private notifySkillsChanged(): void {
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_AGENT);
+    for (const leaf of leaves) {
+      const view = leaf.view as ChatView;
+      view.onSettingsChanged?.(this.settings);
     }
   }
 

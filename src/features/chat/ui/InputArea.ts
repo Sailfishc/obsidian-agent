@@ -1,3 +1,5 @@
+import { SlashCommandDropdown, type SlashCommandItem } from './SlashCommandDropdown';
+
 export interface InputAreaCallbacks {
   onSend: (text: string) => void;
   onCancel: () => void;
@@ -31,6 +33,9 @@ export class InputArea {
   private activePopup: HTMLElement | null = null;
   private dismissHandler: ((e: MouseEvent) => void) | null = null;
 
+  /** Slash command dropdown for /skill: commands. */
+  private slashDropdown: SlashCommandDropdown;
+
   constructor(parent: HTMLElement, callbacks: InputAreaCallbacks) {
     this.callbacks = callbacks;
     this.container = parent.createDiv({ cls: 'oa-input-area' });
@@ -48,7 +53,7 @@ export class InputArea {
 
     this.textArea = inputBox.createEl('textarea', {
       cls: 'oa-input-textarea',
-      attr: { placeholder: 'Ask anything… Type @ to attach files' },
+      attr: { placeholder: 'Ask anything… Type @ to attach files, / for skills' },
     });
 
     // Footer: status (left) + buttons (right), inside input box
@@ -74,11 +79,23 @@ export class InputArea {
     });
     this.cancelButton.style.display = 'none';
 
+    // Initialize slash command dropdown (positioned inside input box, above textarea)
+    this.slashDropdown = new SlashCommandDropdown(inputBox, this.textArea, {
+      onSelect: () => {
+        // After selecting a command, focus stays on input
+      },
+    });
+
     this.setupEventListeners();
   }
 
   private setupEventListeners(): void {
     this.textArea.addEventListener('keydown', (e: KeyboardEvent) => {
+      // Let slash dropdown handle navigation keys first
+      if (this.slashDropdown.handleKeydown(e)) {
+        return;
+      }
+
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         this.handleSend();
@@ -86,11 +103,14 @@ export class InputArea {
       }
     });
 
-    // Detect '@' to trigger context file search
+    // Detect '@' to trigger context file search + '/' for slash commands
     this.textArea.addEventListener('input', () => {
       // Auto-resize textarea
       this.textArea.style.height = 'auto';
       this.textArea.style.height = Math.min(this.textArea.scrollHeight, 200) + 'px';
+
+      // Update slash command dropdown
+      this.slashDropdown.handleInputChange();
 
       // Check if user just typed '@' at a word boundary (start of input or after whitespace)
       const val = this.textArea.value;
@@ -266,6 +286,11 @@ export class InputArea {
     }
   }
 
+  /** Update the available slash commands (called when skills are reloaded). */
+  setSlashCommands(commands: SlashCommandItem[]): void {
+    this.slashDropdown.setCommands(commands);
+  }
+
   focus(): void {
     this.textArea.focus();
   }
@@ -276,5 +301,6 @@ export class InputArea {
 
   destroy(): void {
     this.dismissPopup();
+    this.slashDropdown.destroy();
   }
 }

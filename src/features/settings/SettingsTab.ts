@@ -62,6 +62,7 @@ export class AgentSettingsTab extends PluginSettingTab {
     this.renderModelSection(containerEl);
     this.renderProviderConfigTabs(containerEl);
     this.renderCustomInstructions(containerEl);
+    this.renderSkills(containerEl);
     this.renderMcp(containerEl);
     this.renderSecurity(containerEl);
     this.renderContext(containerEl);
@@ -311,6 +312,92 @@ export class AgentSettingsTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         });
       });
+  }
+
+  // ── Skills ───────────────────────────────────────────────────────────────
+
+  private renderSkills(containerEl: HTMLElement): void {
+    new Setting(containerEl).setName('Skills').setHeading();
+
+    containerEl.createEl('p', {
+      text: 'Skills are SKILL.md files that provide specialized instructions for the agent. Place them in the configured directories within your vault.',
+      cls: 'setting-item-description oa-settings-description',
+    });
+
+    new Setting(containerEl)
+      .setName('Enable skills')
+      .setDesc('Discover and use SKILL.md files from the vault')
+      .addToggle(toggle => {
+        toggle.setValue(this.plugin.settings.skills.enabled);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.skills.enabled = value;
+          await this.plugin.saveSettings();
+          await this.plugin.skillManager?.reload();
+          this.display();
+        });
+      });
+
+    if (this.plugin.settings.skills.enabled) {
+      new Setting(containerEl)
+        .setName('Enable /skill: commands')
+        .setDesc('Allow invoking skills explicitly with /skill:name in chat input')
+        .addToggle(toggle => {
+          toggle.setValue(this.plugin.settings.skills.enableSkillCommands);
+          toggle.onChange(async (value) => {
+            this.plugin.settings.skills.enableSkillCommands = value;
+            await this.plugin.saveSettings();
+          });
+        });
+
+      new Setting(containerEl)
+        .setName('Skill directories')
+        .setDesc('Vault-relative directories to scan for SKILL.md files (one per line)')
+        .addTextArea(text => {
+          text.inputEl.style.width = '100%';
+          text.inputEl.style.height = '80px';
+          text.inputEl.style.fontFamily = 'var(--font-monospace)';
+          text.setPlaceholder('.claude/skills\n.agents/skills');
+          text.setValue(this.plugin.settings.skills.roots.join('\n'));
+          text.onChange(async (value) => {
+            this.plugin.settings.skills.roots = value
+              .split('\n')
+              .map(s => s.trim())
+              .filter(s => s.length > 0);
+            await this.plugin.saveSettings();
+            await this.plugin.skillManager?.reload();
+          });
+        });
+
+      // Show loaded skills summary
+      const skills = this.plugin.skillManager?.getSkills() ?? [];
+      const diagnostics = this.plugin.skillManager?.getDiagnostics() ?? [];
+
+      if (skills.length > 0) {
+        const summaryEl = containerEl.createDiv({ cls: 'oa-settings-description' });
+        summaryEl.createEl('p', {
+          text: `✅ ${skills.length} skill(s) loaded: ${skills.map(s => s.name).join(', ')}`,
+        });
+      } else {
+        containerEl.createEl('p', {
+          text: '📭 No skills found. Create SKILL.md files in the configured directories.',
+          cls: 'setting-item-description oa-settings-description',
+        });
+      }
+
+      if (diagnostics.length > 0) {
+        const diagEl = containerEl.createDiv({ cls: 'oa-settings-description' });
+        diagEl.createEl('p', {
+          text: `⚠️ ${diagnostics.length} diagnostic(s):`,
+        });
+        const list = diagEl.createEl('ul');
+        for (const d of diagnostics.slice(0, 5)) {
+          list.createEl('li', { text: `[${d.type}] ${d.message} (${d.path})` });
+        }
+        if (diagnostics.length > 5) {
+          list.createEl('li', { text: `… and ${diagnostics.length - 5} more` });
+        }
+      }
+    }
   }
 
   // ── MCP ──────────────────────────────────────────────────────────────────

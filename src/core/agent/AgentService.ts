@@ -18,10 +18,15 @@ import { buildVaultSystemPrompt } from '../prompts/systemPrompt';
 import { createVaultTools } from '../tools/vaultTools';
 import type { McpServerManager } from '../mcp/McpServerManager';
 import type { McpToolAdapter } from '../mcp/McpToolAdapter';
+import type { SkillManager } from '../skills/SkillManager';
 
 export interface McpDependencies {
   manager: McpServerManager;
   adapter: McpToolAdapter;
+}
+
+export interface AgentDependencies {
+  skillManager?: SkillManager;
 }
 
 export class AgentService {
@@ -29,11 +34,13 @@ export class AgentService {
   private vaultPath: string;
   private settings: ObsidianAgentSettings;
   private mcp: McpDependencies | null;
+  private deps: AgentDependencies;
 
-  constructor(vaultPath: string, settings: ObsidianAgentSettings, mcp?: McpDependencies) {
+  constructor(vaultPath: string, settings: ObsidianAgentSettings, mcp?: McpDependencies, deps?: AgentDependencies) {
     this.vaultPath = vaultPath;
     this.settings = settings;
     this.mcp = mcp ?? null;
+    this.deps = deps ?? {};
 
     const tools = createVaultTools(vaultPath, {
       blockedCommands: settings.security.blockedCommands,
@@ -41,10 +48,13 @@ export class AgentService {
       bashEnabled: settings.bash.enabled,
     });
 
+    // Build system prompt with skills if available
+    const skills = this.deps.skillManager?.getPromptVisibleSkills();
     const systemPrompt = buildVaultSystemPrompt({
       vaultPath,
       customPrompt: settings.instructions.systemPrompt,
       enabledTools: { bash: settings.bash.enabled },
+      skills: settings.skills.enabled ? skills : undefined,
     });
 
     const model = this.resolveModel();
@@ -149,11 +159,13 @@ export class AgentService {
     // Update thinking level
     this.agent.setThinkingLevel(settings.general.thinkingLevel || 'medium');
 
-    // Update system prompt
+    // Update system prompt (with skills if available)
+    const skills = this.deps.skillManager?.getPromptVisibleSkills();
     const systemPrompt = buildVaultSystemPrompt({
       vaultPath: this.vaultPath,
       customPrompt: settings.instructions.systemPrompt,
       enabledTools: { bash: settings.bash.enabled },
+      skills: settings.skills.enabled ? skills : undefined,
     });
     this.agent.setSystemPrompt(systemPrompt);
 

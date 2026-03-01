@@ -1,13 +1,17 @@
+import { type SkillDefinition, formatSkillsForPrompt } from '../skills/types';
+
 export interface BuildSystemPromptOptions {
   vaultPath: string;
   customPrompt?: string;
   enabledTools?: {
     bash: boolean;
   };
+  /** Prompt-visible skills (disableModelInvocation already filtered out) */
+  skills?: SkillDefinition[];
 }
 
 export function buildVaultSystemPrompt(options: BuildSystemPromptOptions): string {
-  const { vaultPath, customPrompt, enabledTools } = options;
+  const { vaultPath, customPrompt, enabledTools, skills } = options;
   const bashEnabled = enabledTools?.bash !== false;
 
   const now = new Date();
@@ -55,6 +59,11 @@ ${toolsList}
 
 Guidelines:
 ${guidelines}`;
+
+  // Append skills section if any prompt-visible skills are provided
+  if (skills && skills.length > 0) {
+    prompt += formatSkillsForPrompt(skills);
+  }
 
   if (customPrompt) {
     prompt += `\n\nCustom instructions:\n${customPrompt}`;

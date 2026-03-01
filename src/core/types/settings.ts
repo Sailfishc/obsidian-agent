@@ -56,6 +56,12 @@ export interface ObsidianAgentSettings {
     enabled: boolean;
   };
 
+  skills: {
+    enabled: boolean;
+    enableSkillCommands: boolean;
+    roots: string[];
+  };
+
   apiKeys: Record<string, string>;
   customOpenAI: CustomOpenAISettings;
 
@@ -115,6 +121,12 @@ export const DEFAULT_SETTINGS: ObsidianAgentSettings = {
 
   bash: {
     enabled: true,
+  },
+
+  skills: {
+    enabled: true,
+    enableSkillCommands: true,
+    roots: ['.claude/skills', '.agents/skills'],
   },
 
   apiKeys: {},

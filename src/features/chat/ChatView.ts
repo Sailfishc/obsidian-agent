@@ -162,10 +162,31 @@ export class ChatView extends ItemView {
       return;
     }
 
-    this.agentService = new AgentService(vaultPath, this.plugin.settings, {
-      manager: this.plugin.mcpManager,
-      adapter: this.plugin.mcpToolAdapter,
-    });
+    this.agentService = new AgentService(
+      vaultPath,
+      this.plugin.settings,
+      {
+        manager: this.plugin.mcpManager,
+        adapter: this.plugin.mcpToolAdapter,
+      },
+      {
+        skillManager: this.plugin.skillManager,
+      },
+    );
+
+    // Sync available skills to the slash command dropdown
+    this.refreshSlashCommands();
+  }
+
+  /** Sync loaded skills into the InputArea's slash command dropdown. */
+  private refreshSlashCommands(): void {
+    const skills = this.plugin.skillManager?.getSkills() ?? [];
+    const commands = skills.map(s => ({
+      name: `skill:${s.name}`,
+      description: s.description,
+      type: 'skill' as const,
+    }));
+    this.inputArea.setSlashCommands(commands);
   }
 
   private renderWelcome(): void {
@@ -612,6 +633,25 @@ export class ChatView extends ItemView {
     // Ensure agent service has latest settings
     this.agentService.updateSettings(this.plugin.settings);
 
+    // Try to expand /skill: commands
+    let effectivePrompt = text;
+    if (text.startsWith('/skill:')) {
+      const skillExpansion = await this.plugin.skillManager?.tryExpandSkillCommand(text);
+      if (skillExpansion) {
+        if ('expandedText' in skillExpansion && skillExpansion.expandedText) {
+          effectivePrompt = skillExpansion.expandedText;
+          console.log(`[skills] Expanded /skill:${skillExpansion.skill.name} (${skillExpansion.skill.filePath})`);
+        } else if ('error' in skillExpansion && skillExpansion.error) {
+          new Notice(skillExpansion.error);
+          console.warn(`[skills] Expansion failed: ${skillExpansion.error}`);
+          return; // Don't send if skill command was recognized but failed
+        }
+      } else {
+        // skillManager returned null — skill commands disabled or not recognized
+        console.log('[skills] /skill: command not expanded (disabled or not recognized)');
+      }
+    }
+
     // Ensure a conversation exists (lazy creation)
     await this.ensureConversation(text);
 
@@ -654,7 +694,7 @@ export class ChatView extends ItemView {
     this.streamRenderer = renderer;
 
     try {
-      for await (const chunk of this.agentService.query(text, {
+      for await (const chunk of this.agentService.query(effectivePrompt, {
         activeFilePath: this.includeActiveFile ? this.activeFilePath : null,
         contextFiles,
       })) {
@@ -829,6 +869,7 @@ export class ChatView extends ItemView {
   /** Called by main.ts when settings change. Updates UI and runtime behavior. */
   onSettingsChanged(settings: ObsidianAgentSettings): void {
     this.refreshStatusDisplay();
+    this.refreshSlashCommands();
 
     // Re-render existing messages if appearance settings changed
     if (this.messages.length > 0 && !this.isStreaming) {
