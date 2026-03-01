@@ -13,7 +13,7 @@ import {
   getProviders,
 } from '@mariozechner/pi-ai';
 import { convertToLlm } from '@mariozechner/pi-coding-agent';
-import type { CustomOpenAISettings, ObsidianAgentSettings, StreamChunk } from '../types';
+import type { CustomOpenAISettings, ObsidianAgentSettings, QueryContext, StreamChunk } from '../types';
 import { buildVaultSystemPrompt } from '../prompts/systemPrompt';
 import { createVaultTools } from '../tools/vaultTools';
 
@@ -153,7 +153,7 @@ export class AgentService {
     this.agent.setTools(tools);
   }
 
-  async *query(prompt: string): AsyncGenerator<StreamChunk> {
+  async *query(prompt: string, context?: QueryContext): AsyncGenerator<StreamChunk> {
     const model = this.resolveModel();
     if (!model) {
       yield { type: 'error', content: 'No model configured. Please set a provider and model in settings.' };
@@ -272,8 +272,24 @@ export class AgentService {
       }
     });
 
+    // Build final prompt with context
+    let finalPrompt = prompt;
+
+    if (context?.activeFilePath) {
+      finalPrompt += `\n\n<current_note>\n${context.activeFilePath}\n</current_note>`;
+    }
+
+    if (context?.contextFiles && context.contextFiles.length > 0) {
+      finalPrompt += '\n\n<context_files>\n';
+      for (const f of context.contextFiles) {
+        const safePath = f.path.replace(/"/g, '&quot;');
+        finalPrompt += `<file path="${safePath}">\n${f.content}\n</file>\n`;
+      }
+      finalPrompt += '</context_files>';
+    }
+
     // Start the prompt
-    const promptPromise = this.agent.prompt(prompt).catch((err: Error) => {
+    const promptPromise = this.agent.prompt(finalPrompt).catch((err: Error) => {
       pushChunk({ type: 'error', content: err.message || 'Unknown error' });
       done = true;
     });

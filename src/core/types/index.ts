@@ -1,8 +1,11 @@
 export {
   type ChatMessage,
   type ContentBlock,
+  type ContextFile,
   type Conversation,
   type ConversationMeta,
+  type QueryContext,
+  type StoredConversationMeta,
   type StreamChunk,
   type ToolCallInfo,
   type UsageInfo,

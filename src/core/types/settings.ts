@@ -20,6 +20,9 @@ export interface ObsidianAgentSettings {
   enableAutoScroll: boolean;
 
   customOpenAI: CustomOpenAISettings;
+
+  /** ID of the last active conversation (for restoring on reload). */
+  lastConversationId?: string | null;
 }
 
 export const DEFAULT_SETTINGS: ObsidianAgentSettings = {

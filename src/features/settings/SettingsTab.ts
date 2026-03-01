@@ -141,30 +141,28 @@ export class AgentSettingsTab extends PluginSettingTab {
       });
 
     // ── API Keys ──
-    if (!isCustomProvider) {
-      containerEl.createEl('h2', { text: 'API Keys' });
-      containerEl.createEl('p', {
-        text: 'Set API keys for providers. Alternatively, set environment variables (e.g., ANTHROPIC_API_KEY).',
-        cls: 'setting-item-description',
-      });
+    containerEl.createEl('h2', { text: 'API Keys' });
+    containerEl.createEl('p', {
+      text: 'Set API keys for providers. Alternatively, set environment variables (e.g., ANTHROPIC_API_KEY).',
+      cls: 'setting-item-description',
+    });
 
-      for (const provider of WELL_KNOWN_PROVIDERS) {
-        new Setting(containerEl)
-          .setName(`${provider} API key`)
-          .addText(text => {
-            text.inputEl.type = 'password';
-            text.inputEl.style.width = '100%';
-            text.setValue(this.plugin.settings.apiKeys[provider] || '');
-            text.onChange(async (value) => {
-              if (value.trim()) {
-                this.plugin.settings.apiKeys[provider] = value.trim();
-              } else {
-                delete this.plugin.settings.apiKeys[provider];
-              }
-              await this.plugin.saveSettings();
-            });
+    for (const provider of WELL_KNOWN_PROVIDERS) {
+      new Setting(containerEl)
+        .setName(`${provider} API key`)
+        .addText(text => {
+          text.inputEl.type = 'password';
+          text.inputEl.style.width = '100%';
+          text.setValue(this.plugin.settings.apiKeys[provider] || '');
+          text.onChange(async (value) => {
+            if (value.trim()) {
+              this.plugin.settings.apiKeys[provider] = value.trim();
+            } else {
+              delete this.plugin.settings.apiKeys[provider];
+            }
+            await this.plugin.saveSettings();
           });
-      }
+        });
     }
 
     // ── System Prompt ──

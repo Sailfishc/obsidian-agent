@@ -6,7 +6,7 @@ VAULT_PATH="/Users/zhangcheng/ObsidianVaults/sailfish-notes"
 PLUGIN_DIR="$VAULT_PATH/.obsidian/plugins/$PLUGIN_ID"
 
 echo "Building..."
-npm run build
+pnpm run build
 
 mkdir -p "$PLUGIN_DIR"
 cp main.js manifest.json styles.css "$PLUGIN_DIR/"

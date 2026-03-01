@@ -60,3 +60,22 @@ export interface ConversationMeta {
   messageCount: number;
   preview: string;
 }
+
+/** Persisted metadata record stored as {id}.meta.json. */
+export type StoredConversationMeta = ConversationMeta;
+
+/** A file attached as context to a user query. */
+export interface ContextFile {
+  /** Vault-relative path. */
+  path: string;
+  /** Plain-text content read from the vault. */
+  content: string;
+}
+
+/** Optional context passed alongside a user query. */
+export interface QueryContext {
+  /** Vault-relative path of the currently active file, if any. */
+  activeFilePath?: string | null;
+  /** All context files to inject (active + manually added), already read by the caller. */
+  contextFiles?: ContextFile[];
+}

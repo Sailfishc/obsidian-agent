@@ -1,4 +1,4 @@
-import type { StreamChunk, ToolCallInfo } from '../../../core/types';
+import type { ContentBlock, StreamChunk, ToolCallInfo } from '../../../core/types';
 
 export class StreamRenderer {
   private container: HTMLElement;
@@ -9,6 +9,8 @@ export class StreamRenderer {
   private collectedText = '';
   private collectedThinking = '';
   private toolCalls: ToolCallInfo[] = [];
+  /** Ordered content blocks to faithfully reproduce interleaved stream order. */
+  private contentBlocks: ContentBlock[] = [];
   private onAutoScroll?: () => void;
 
   constructor(container: HTMLElement, onAutoScroll?: () => void) {
@@ -46,29 +48,53 @@ export class StreamRenderer {
 
     if (!this.currentTextEl) {
       this.currentTextEl = this.messageEl.createDiv({ cls: 'oa-message-text oa-streaming-text' });
+      // Start a new text block
+      this.contentBlocks.push({ type: 'text', content: '' });
     }
     this.collectedText += text;
     this.currentTextEl.textContent = this.collectedText;
+
+    // Update last text block
+    const lastBlock = this.contentBlocks[this.contentBlocks.length - 1];
+    if (lastBlock && lastBlock.type === 'text') {
+      (lastBlock as { type: 'text'; content: string }).content = this.collectedText;
+    }
   }
 
   private appendThinking(text: string): void {
     if (!this.currentThinkingEl) {
       const thinkingWrapper = this.messageEl.createDiv({ cls: 'oa-thinking oa-thinking-active' });
-      thinkingWrapper.createDiv({ cls: 'oa-thinking-header' }).createSpan({ text: 'Thinking...' });
+      const headerEl = thinkingWrapper.createDiv({ cls: 'oa-thinking-header' });
+      headerEl.createSpan({ cls: 'oa-thinking-label', text: 'Thought' });
       this.currentThinkingEl = thinkingWrapper.createDiv({ cls: 'oa-thinking-content' });
       this.currentThinkingEl.style.display = 'block';
+      // Start a new thinking block
+      this.contentBlocks.push({ type: 'thinking', content: '' });
     }
     this.collectedThinking += text;
     this.currentThinkingEl.textContent = this.collectedThinking;
+
+    // Update last thinking block
+    const lastBlock = this.contentBlocks[this.contentBlocks.length - 1];
+    if (lastBlock && lastBlock.type === 'thinking') {
+      (lastBlock as { type: 'thinking'; content: string }).content = this.collectedThinking;
+    }
   }
 
   private addToolUse(id: string, name: string, input: Record<string, unknown>): void {
     // Close text/thinking if open
-    this.currentTextEl = null;
-    this.currentThinkingEl = null;
+    if (this.currentTextEl) {
+      this.currentTextEl = null;
+      this.collectedText = '';
+    }
+    if (this.currentThinkingEl) {
+      this.currentThinkingEl = null;
+      this.collectedThinking = '';
+    }
 
     const toolEl = this.messageEl.createDiv({ cls: 'oa-tool-call oa-tool-running' });
     const headerEl = toolEl.createDiv({ cls: 'oa-tool-header' });
+    headerEl.createSpan({ cls: 'oa-tool-icon', text: getToolIcon(name) });
     headerEl.createSpan({ cls: 'oa-tool-name', text: formatToolName(name) });
 
     const summaryText = getToolInputSummary(name, input);
@@ -81,6 +107,7 @@ export class StreamRenderer {
 
     this.toolElements.set(id, toolEl);
     this.toolCalls.push({ id, name, input });
+    this.contentBlocks.push({ type: 'tool_use', toolId: id });
   }
 
   private addToolResult(id: string, content: string, isError?: boolean): void {
@@ -116,17 +143,31 @@ export class StreamRenderer {
     errorEl.createEl('p', { text: content });
   }
 
-  finalize(): { text: string; thinking: string; toolCalls: ToolCallInfo[] } {
+  finalize(): { text: string; thinking: string; toolCalls: ToolCallInfo[]; contentBlocks: ContentBlock[] } {
     this.messageEl.removeClass('oa-message-streaming');
     return {
       text: this.collectedText,
       thinking: this.collectedThinking,
       toolCalls: this.toolCalls,
+      contentBlocks: this.contentBlocks,
     };
   }
 
   getElement(): HTMLElement {
     return this.messageEl;
+  }
+}
+
+function getToolIcon(name: string): string {
+  switch (name) {
+    case 'read': return '\uD83D\uDCC4';
+    case 'write': return '\u270D\uFE0F';
+    case 'edit': return '\u2702\uFE0F';
+    case 'bash': return '\uD83D\uDCBB';
+    case 'grep': return '\uD83D\uDD0D';
+    case 'find': return '\uD83D\uDCC2';
+    case 'ls': return '\uD83D\uDCC1';
+    default: return '\uD83D\uDD27';
   }
 }
 

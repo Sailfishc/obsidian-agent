@@ -28,6 +28,11 @@ describe('buildVaultSystemPrompt', () => {
     expect(prompt).toContain('<current_note>');
   });
 
+  it('should include context_files instruction', () => {
+    const prompt = buildVaultSystemPrompt({ vaultPath });
+    expect(prompt).toContain('<context_files>');
+  });
+
   it('should include date and time', () => {
     const prompt = buildVaultSystemPrompt({ vaultPath });
     expect(prompt).toContain('Current date and time:');

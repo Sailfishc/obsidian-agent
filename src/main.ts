@@ -53,11 +53,14 @@ export default class ObsidianAgentPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
 
     // Deep-merge nested objects that Object.assign won't handle correctly
-    // (older installs may have partial or missing customOpenAI)
+    // (older installs may have partial, null, or missing customOpenAI)
+    const loadedCustom = loaded?.customOpenAI && typeof loaded.customOpenAI === 'object'
+      ? loaded.customOpenAI
+      : {};
     this.settings.customOpenAI = Object.assign(
       {},
       DEFAULT_SETTINGS.customOpenAI,
-      loaded?.customOpenAI,
+      loadedCustom,
     );
   }
 

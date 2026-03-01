@@ -16,7 +16,19 @@ export function renderAssistantMessage(
   component: Component,
 ): void {
   const messageEl = container.createDiv({ cls: 'oa-message oa-message-assistant' });
+  renderAssistantMessageInto(messageEl, message, component);
+}
 
+/**
+ * Render assistant message content into an existing element.
+ * Used both by `renderAssistantMessage` (new element) and by
+ * ChatView to rehydrate a streaming element with markdown.
+ */
+export function renderAssistantMessageInto(
+  messageEl: HTMLElement,
+  message: ChatMessage,
+  component: Component,
+): void {
   if (message.contentBlocks) {
     for (const block of message.contentBlocks) {
       switch (block.type) {
@@ -64,7 +76,7 @@ function renderMarkdownBlock(
 function renderThinkingBlock(container: HTMLElement, content: string): void {
   const thinkingEl = container.createDiv({ cls: 'oa-thinking' });
   const headerEl = thinkingEl.createDiv({ cls: 'oa-thinking-header' });
-  headerEl.createSpan({ text: 'Thinking...' });
+  headerEl.createSpan({ cls: 'oa-thinking-label', text: 'Thought' });
 
   const toggleEl = headerEl.createEl('button', {
     cls: 'oa-thinking-toggle clickable-icon',
