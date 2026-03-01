@@ -1,8 +1,10 @@
-import { Notice, Plugin } from 'obsidian';
+import { type Editor, type MarkdownView, Notice, Plugin } from 'obsidian';
 import type { ObsidianAgentSettings } from './core/types';
 import { DEFAULT_SETTINGS, VIEW_TYPE_AGENT } from './core/types';
 import { ChatView } from './features/chat/ChatView';
+import { InlineEditModal } from './features/inline-edit/InlineEditModal';
 import { AgentSettingsTab } from './features/settings/SettingsTab';
+import { buildCursorContext } from './utils/inlineEditContext';
 
 export default class ObsidianAgentPlugin extends Plugin {
   settings: ObsidianAgentSettings;
@@ -38,6 +40,51 @@ export default class ObsidianAgentPlugin extends Plugin {
           (view as any).newChat?.();
         }
         return true;
+      },
+    });
+
+    // Inline Edit command (Cmd/Ctrl+Shift+E)
+    this.addCommand({
+      id: 'inline-edit',
+      name: 'Inline edit',
+      hotkeys: [{ modifiers: ['Mod', 'Shift'], key: 'e' }],
+      editorCallback: (editor: Editor, view: MarkdownView) => {
+        const file = view.file;
+        if (!file) {
+          new Notice('No active file');
+          return;
+        }
+        const notePath = file.path;
+        const selectedText = editor.getSelection();
+
+        if (selectedText && selectedText.trim().length > 0) {
+          // Selection mode
+          const from = editor.getCursor('from');
+          const to = editor.getCursor('to');
+          new InlineEditModal(this.app, this, editor, view, notePath, {
+            mode: 'selection',
+            selectedText,
+            from,
+            to,
+            startLine: from.line + 1, // 1-indexed
+            lineCount: selectedText.split(/\r?\n/).length,
+          }).open();
+        } else {
+          // Cursor mode
+          const cursor = editor.getCursor();
+          const lineCount = editor.lineCount();
+          const cursorContext = buildCursorContext(
+            (line: number) => editor.getLine(line),
+            lineCount,
+            cursor.line,
+            cursor.ch,
+          );
+          new InlineEditModal(this.app, this, editor, view, notePath, {
+            mode: 'cursor',
+            pos: cursor,
+            cursorContext,
+          }).open();
+        }
       },
     });
 

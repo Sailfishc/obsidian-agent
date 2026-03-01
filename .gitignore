@@ -3,7 +3,6 @@ opensrc/
 
 # Build output
 main.js
-styles.css
 *.js.map
 dist/
 
