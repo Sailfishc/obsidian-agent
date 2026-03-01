@@ -49,7 +49,16 @@ export default class ObsidianAgentPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const loaded = await this.loadData();
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
+
+    // Deep-merge nested objects that Object.assign won't handle correctly
+    // (older installs may have partial or missing customOpenAI)
+    this.settings.customOpenAI = Object.assign(
+      {},
+      DEFAULT_SETTINGS.customOpenAI,
+      loaded?.customOpenAI,
+    );
   }
 
   async saveSettings(): Promise<void> {

@@ -13,7 +13,7 @@ import {
   getProviders,
 } from '@mariozechner/pi-ai';
 import { convertToLlm } from '@mariozechner/pi-coding-agent';
-import type { ObsidianAgentSettings, StreamChunk } from '../types';
+import type { CustomOpenAISettings, ObsidianAgentSettings, StreamChunk } from '../types';
 import { buildVaultSystemPrompt } from '../prompts/systemPrompt';
 import { createVaultTools } from '../tools/vaultTools';
 
@@ -54,6 +54,12 @@ export class AgentService {
 
   private resolveModel(): Model<any> | undefined {
     const { provider, modelId } = this.settings;
+
+    // Custom OpenAI-compatible endpoint: construct model manually
+    if (provider === 'custom-openai') {
+      return this.resolveCustomOpenAIModel(this.settings.customOpenAI);
+    }
+
     if (!provider || !modelId) return undefined;
 
     try {
@@ -67,7 +73,33 @@ export class AgentService {
     }
   }
 
+  /**
+   * Constructs a Model object for a custom OpenAI-compatible endpoint.
+   * Uses sensible defaults for fields that the user doesn't configure.
+   */
+  private resolveCustomOpenAIModel(cfg: CustomOpenAISettings): Model<'openai-completions'> | undefined {
+    if (!cfg.baseUrl?.trim() || !cfg.modelId?.trim()) return undefined;
+
+    return {
+      id: cfg.modelId.trim(),
+      name: cfg.modelId.trim(),
+      api: 'openai-completions' as const,
+      provider: 'openai',  // reuse pi-ai's OpenAI completions streaming implementation
+      baseUrl: cfg.baseUrl.trim(),
+      reasoning: false,
+      input: ['text'] as ('text' | 'image')[],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 8192,
+    };
+  }
+
   private getApiKey(provider: string): string | undefined {
+    // Custom OpenAI-compatible endpoint: use its own API key (may be empty for local endpoints)
+    if (this.settings.provider === 'custom-openai') {
+      return this.settings.customOpenAI.apiKey?.trim() || undefined;
+    }
+
     // Check settings first
     if (this.settings.apiKeys[provider]) {
       return this.settings.apiKeys[provider];
@@ -82,6 +114,7 @@ export class AgentService {
       groq: ['GROQ_API_KEY'],
       openrouter: ['OPENROUTER_API_KEY'],
       mistral: ['MISTRAL_API_KEY'],
+      zai: ['ZAI_API_KEY'],
     };
 
     const envVars = envKeyMap[provider] || [`${provider.toUpperCase().replace(/-/g, '_')}_API_KEY`];
@@ -127,8 +160,10 @@ export class AgentService {
       return;
     }
 
+    const isCustomEndpoint = this.settings.provider === 'custom-openai';
     const apiKey = this.getApiKey(model.provider);
-    if (!apiKey) {
+    // Custom endpoints may not require an API key (e.g. Ollama, LM Studio)
+    if (!apiKey && !isCustomEndpoint) {
       yield { type: 'error', content: `No API key found for provider "${model.provider}". Set it in plugin settings or environment variables.` };
       return;
     }
@@ -297,13 +332,20 @@ export class AgentService {
 
   static getAvailableProviders(): string[] {
     try {
-      return getProviders() as string[];
+      const providers = getProviders() as string[];
+      // Ensure zai is included and add synthetic custom-openai provider
+      if (!providers.includes('zai')) providers.push('zai');
+      providers.push('custom-openai');
+      return providers;
     } catch {
-      return ['anthropic', 'openai', 'google'];
+      return ['anthropic', 'openai', 'google', 'zai', 'custom-openai'];
     }
   }
 
   static getModelsForProvider(provider: string): Array<{ id: string; name: string }> {
+    // Custom endpoint uses free-form model ID input, not a dropdown
+    if (provider === 'custom-openai') return [];
+
     try {
       return getModels(provider as KnownProvider).map(m => ({ id: m.id, name: m.name }));
     } catch {

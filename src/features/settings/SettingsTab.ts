@@ -18,7 +18,13 @@ const WELL_KNOWN_PROVIDERS = [
   'groq',
   'openrouter',
   'mistral',
+  'zai',
 ];
+
+/** User-friendly labels for provider dropdown */
+const PROVIDER_LABELS: Record<string, string> = {
+  'custom-openai': 'OpenAI-compatible (custom)',
+};
 
 export class AgentSettingsTab extends PluginSettingTab {
   plugin: ObsidianAgentPlugin;
@@ -32,7 +38,9 @@ export class AgentSettingsTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    // Model Configuration
+    const isCustomProvider = this.plugin.settings.provider === 'custom-openai';
+
+    // ── Model Configuration ──
     containerEl.createEl('h2', { text: 'Model' });
 
     // Provider selector
@@ -40,37 +48,82 @@ export class AgentSettingsTab extends PluginSettingTab {
       .setName('Provider')
       .setDesc('LLM provider to use')
       .addDropdown(dropdown => {
-        const providers = WELL_KNOWN_PROVIDERS;
-        for (const p of providers) {
-          dropdown.addOption(p, p);
+        for (const p of WELL_KNOWN_PROVIDERS) {
+          dropdown.addOption(p, PROVIDER_LABELS[p] || p);
         }
+        // Add custom-openai at the end
+        dropdown.addOption('custom-openai', PROVIDER_LABELS['custom-openai']);
+
         dropdown.setValue(this.plugin.settings.provider);
         dropdown.onChange(async (value) => {
           this.plugin.settings.provider = value;
           await this.plugin.saveSettings();
-          this.display(); // Refresh to update model list
+          this.display(); // Refresh to update model section
         });
       });
 
-    // Model selector
-    const models = AgentService.getModelsForProvider(this.plugin.settings.provider);
-    new Setting(containerEl)
-      .setName('Model')
-      .setDesc('Model to use for conversations')
-      .addDropdown(dropdown => {
-        if (models.length === 0) {
-          dropdown.addOption('', 'No models available');
-        } else {
-          for (const m of models) {
-            dropdown.addOption(m.id, m.name || m.id);
-          }
-        }
-        dropdown.setValue(this.plugin.settings.modelId);
-        dropdown.onChange(async (value) => {
-          this.plugin.settings.modelId = value;
-          await this.plugin.saveSettings();
+    if (isCustomProvider) {
+      // Custom OpenAI-compatible endpoint settings
+      new Setting(containerEl)
+        .setName('Base URL')
+        .setDesc('API endpoint URL (e.g. http://localhost:11434/v1 for Ollama)')
+        .addText(text => {
+          text.setPlaceholder('http://localhost:11434/v1');
+          text.inputEl.style.width = '100%';
+          text.setValue(this.plugin.settings.customOpenAI.baseUrl);
+          text.onChange(async (value) => {
+            this.plugin.settings.customOpenAI.baseUrl = value;
+            await this.plugin.saveSettings();
+          });
         });
-      });
+
+      new Setting(containerEl)
+        .setName('Model ID')
+        .setDesc('Model identifier passed to the API (e.g. llama3.1:8b, gpt-4o)')
+        .addText(text => {
+          text.setPlaceholder('llama3.1:8b');
+          text.inputEl.style.width = '100%';
+          text.setValue(this.plugin.settings.customOpenAI.modelId);
+          text.onChange(async (value) => {
+            this.plugin.settings.customOpenAI.modelId = value;
+            await this.plugin.saveSettings();
+          });
+        });
+
+      new Setting(containerEl)
+        .setName('API key')
+        .setDesc('Leave empty for local endpoints that don\'t require authentication')
+        .addText(text => {
+          text.inputEl.type = 'password';
+          text.inputEl.style.width = '100%';
+          text.setPlaceholder('(optional)');
+          text.setValue(this.plugin.settings.customOpenAI.apiKey);
+          text.onChange(async (value) => {
+            this.plugin.settings.customOpenAI.apiKey = value;
+            await this.plugin.saveSettings();
+          });
+        });
+    } else {
+      // Registry-backed model selector
+      const models = AgentService.getModelsForProvider(this.plugin.settings.provider);
+      new Setting(containerEl)
+        .setName('Model')
+        .setDesc('Model to use for conversations')
+        .addDropdown(dropdown => {
+          if (models.length === 0) {
+            dropdown.addOption('', 'No models available');
+          } else {
+            for (const m of models) {
+              dropdown.addOption(m.id, m.name || m.id);
+            }
+          }
+          dropdown.setValue(this.plugin.settings.modelId);
+          dropdown.onChange(async (value) => {
+            this.plugin.settings.modelId = value;
+            await this.plugin.saveSettings();
+          });
+        });
+    }
 
     // Thinking level
     new Setting(containerEl)
@@ -87,32 +140,34 @@ export class AgentSettingsTab extends PluginSettingTab {
         });
       });
 
-    // API Keys
-    containerEl.createEl('h2', { text: 'API Keys' });
-    containerEl.createEl('p', {
-      text: 'Set API keys for providers. Alternatively, set environment variables (e.g., ANTHROPIC_API_KEY).',
-      cls: 'setting-item-description',
-    });
+    // ── API Keys ──
+    if (!isCustomProvider) {
+      containerEl.createEl('h2', { text: 'API Keys' });
+      containerEl.createEl('p', {
+        text: 'Set API keys for providers. Alternatively, set environment variables (e.g., ANTHROPIC_API_KEY).',
+        cls: 'setting-item-description',
+      });
 
-    for (const provider of WELL_KNOWN_PROVIDERS) {
-      new Setting(containerEl)
-        .setName(`${provider} API key`)
-        .addText(text => {
-          text.inputEl.type = 'password';
-          text.inputEl.style.width = '100%';
-          text.setValue(this.plugin.settings.apiKeys[provider] || '');
-          text.onChange(async (value) => {
-            if (value.trim()) {
-              this.plugin.settings.apiKeys[provider] = value.trim();
-            } else {
-              delete this.plugin.settings.apiKeys[provider];
-            }
-            await this.plugin.saveSettings();
+      for (const provider of WELL_KNOWN_PROVIDERS) {
+        new Setting(containerEl)
+          .setName(`${provider} API key`)
+          .addText(text => {
+            text.inputEl.type = 'password';
+            text.inputEl.style.width = '100%';
+            text.setValue(this.plugin.settings.apiKeys[provider] || '');
+            text.onChange(async (value) => {
+              if (value.trim()) {
+                this.plugin.settings.apiKeys[provider] = value.trim();
+              } else {
+                delete this.plugin.settings.apiKeys[provider];
+              }
+              await this.plugin.saveSettings();
+            });
           });
-        });
+      }
     }
 
-    // System Prompt
+    // ── System Prompt ──
     containerEl.createEl('h2', { text: 'System Prompt' });
 
     new Setting(containerEl)
@@ -128,7 +183,7 @@ export class AgentSettingsTab extends PluginSettingTab {
         });
       });
 
-    // Safety
+    // ── Safety ──
     containerEl.createEl('h2', { text: 'Safety' });
 
     new Setting(containerEl)
@@ -158,7 +213,7 @@ export class AgentSettingsTab extends PluginSettingTab {
         });
       });
 
-    // UI
+    // ── UI ──
     containerEl.createEl('h2', { text: 'Interface' });
 
     new Setting(containerEl)

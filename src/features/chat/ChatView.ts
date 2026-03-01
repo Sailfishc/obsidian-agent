@@ -61,7 +61,7 @@ export class ChatView extends ItemView {
     // Model indicator
     const modelEl = this.headerEl.createDiv({ cls: 'oa-header-model' });
     modelEl.createSpan({
-      text: `${this.plugin.settings.provider}/${this.plugin.settings.modelId}`,
+      text: this.getActiveModelLabel(),
       cls: 'oa-model-label',
     });
 
@@ -232,10 +232,20 @@ export class ChatView extends ItemView {
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
 
+  /** Returns a user-friendly label for the currently active model. */
+  private getActiveModelLabel(): string {
+    const { provider, modelId, customOpenAI } = this.plugin.settings;
+    if (provider === 'custom-openai') {
+      const modelName = customOpenAI.modelId || '(not configured)';
+      return `custom/${modelName}`;
+    }
+    return `${provider}/${modelId}`;
+  }
+
   refreshModelDisplay(): void {
     const modelLabel = this.headerEl?.querySelector('.oa-model-label');
     if (modelLabel) {
-      modelLabel.textContent = `${this.plugin.settings.provider}/${this.plugin.settings.modelId}`;
+      modelLabel.textContent = this.getActiveModelLabel();
     }
   }
 }

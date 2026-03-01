@@ -11,6 +11,7 @@ export {
 
 export {
   DEFAULT_SETTINGS,
+  type CustomOpenAISettings,
   type ObsidianAgentSettings,
   type ThinkingLevel,
 } from './settings';
