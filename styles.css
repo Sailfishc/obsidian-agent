@@ -34,7 +34,8 @@
 /* User message */
 .oa-message-user {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
 .oa-message-user > .oa-message-content {
@@ -49,6 +50,84 @@
 
 .oa-message-user > .oa-message-content p {
   margin: 0;
+}
+
+/* ── Message timestamp ────────────────────────────────────────────── */
+.oa-message-timestamp {
+  font-size: 11px;
+  color: var(--text-faint);
+  user-select: none;
+}
+
+.oa-message-user .oa-message-timestamp {
+  margin-top: 4px;
+}
+
+.oa-message-footer .oa-message-timestamp {
+  margin-top: 0;
+}
+
+/* ── Assistant message footer (timestamp + actions) ──────────────── */
+.oa-message-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  min-height: 24px;
+}
+
+.oa-message-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.oa-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.12s, color 0.12s;
+}
+
+.oa-message-assistant:hover .oa-action-btn {
+  opacity: 1;
+}
+
+.oa-action-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.oa-action-btn:disabled {
+  opacity: 0.3 !important;
+  cursor: not-allowed;
+}
+
+.oa-action-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-faint);
+}
+
+/* Touch devices: always show action buttons */
+@media (hover: none) {
+  .oa-action-btn {
+    opacity: 1;
+  }
+}
+
+/* Keyboard / focus reveal */
+.oa-message-assistant:focus-within .oa-action-btn {
+  opacity: 1;
 }
 
 /* Assistant message */
@@ -340,30 +419,34 @@
   min-width: 0;
 }
 
-.oa-input-row {
+/* Unified input box: border container holding pills + textarea + footer */
+.oa-input-box {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  padding: 8px 12px;
+  transition: border-color 0.15s;
+}
+
+.oa-input-box:focus-within {
+  border-color: var(--interactive-accent);
 }
 
 .oa-input-textarea {
   flex: 1;
   resize: none;
-  min-height: 36px;
+  min-height: 60px;
   max-height: 200px;
-  padding: 8px 12px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
-  background: var(--background-primary);
+  padding: 0;
+  border: none;
+  background: transparent;
   color: var(--text-normal);
   font-size: 14px;
   font-family: var(--font-text);
   line-height: 1.4;
   outline: none;
-  transition: border-color 0.15s;
-}
-
-.oa-input-textarea:focus {
-  border-color: var(--interactive-accent);
 }
 
 .oa-input-textarea:disabled {
@@ -491,11 +574,12 @@
   color: var(--text-on-accent);
 }
 
-/* --- Input footer (status left, buttons right) --------------------------- */
+/* --- Input footer (status left, buttons right) inside input box --------- */
 .oa-input-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding-top: 6px;
 }
 
 .oa-chat-status {
@@ -898,4 +982,25 @@
   line-height: 1.5;
   color: var(--text-normal);
   white-space: pre-wrap;
+}
+
+/* ── Settings Page ────────────────────────────────────────────────────── */
+
+.oa-settings .setting-item-heading {
+  padding-top: 16px;
+  margin-top: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.oa-settings .setting-item-heading:first-child {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.oa-settings .oa-settings-description {
+  margin-top: -4px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
 }

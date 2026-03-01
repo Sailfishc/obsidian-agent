@@ -27,13 +27,15 @@ export class AgentService {
     this.settings = settings;
 
     const tools = createVaultTools(vaultPath, {
-      blockedCommands: settings.blockedCommands,
-      enableBlocklist: settings.enableBlocklist,
+      blockedCommands: settings.security.blockedCommands,
+      enableBlocklist: settings.security.enableBlocklist,
+      bashEnabled: settings.bash.enabled,
     });
 
     const systemPrompt = buildVaultSystemPrompt({
       vaultPath,
-      customPrompt: settings.systemPrompt,
+      customPrompt: settings.instructions.systemPrompt,
+      enabledTools: { bash: settings.bash.enabled },
     });
 
     const model = this.resolveModel();
@@ -42,7 +44,7 @@ export class AgentService {
       initialState: {
         systemPrompt,
         model,
-        thinkingLevel: settings.thinkingLevel || 'medium',
+        thinkingLevel: settings.general.thinkingLevel || 'medium',
         tools,
       },
       convertToLlm,
@@ -53,7 +55,7 @@ export class AgentService {
   }
 
   private resolveModel(): Model<any> | undefined {
-    const { provider, modelId } = this.settings;
+    const { provider, modelId } = this.settings.general;
 
     // Custom OpenAI-compatible endpoint: construct model manually
     if (provider === 'custom-openai') {
@@ -96,7 +98,7 @@ export class AgentService {
 
   private getApiKey(provider: string): string | undefined {
     // Custom OpenAI-compatible endpoint: use its own API key (may be empty for local endpoints)
-    if (this.settings.provider === 'custom-openai') {
+    if (this.settings.general.provider === 'custom-openai') {
       return this.settings.customOpenAI.apiKey?.trim() || undefined;
     }
 
@@ -136,19 +138,21 @@ export class AgentService {
     }
 
     // Update thinking level
-    this.agent.setThinkingLevel(settings.thinkingLevel || 'medium');
+    this.agent.setThinkingLevel(settings.general.thinkingLevel || 'medium');
 
     // Update system prompt
     const systemPrompt = buildVaultSystemPrompt({
       vaultPath: this.vaultPath,
-      customPrompt: settings.systemPrompt,
+      customPrompt: settings.instructions.systemPrompt,
+      enabledTools: { bash: settings.bash.enabled },
     });
     this.agent.setSystemPrompt(systemPrompt);
 
-    // Update tools with new blocklist settings
+    // Update tools with new blocklist/bash settings
     const tools = createVaultTools(this.vaultPath, {
-      blockedCommands: settings.blockedCommands,
-      enableBlocklist: settings.enableBlocklist,
+      blockedCommands: settings.security.blockedCommands,
+      enableBlocklist: settings.security.enableBlocklist,
+      bashEnabled: settings.bash.enabled,
     });
     this.agent.setTools(tools);
   }
@@ -160,7 +164,7 @@ export class AgentService {
       return;
     }
 
-    const isCustomEndpoint = this.settings.provider === 'custom-openai';
+    const isCustomEndpoint = this.settings.general.provider === 'custom-openai';
     const apiKey = this.getApiKey(model.provider);
     // Custom endpoints may not require an API key (e.g. Ollama, LM Studio)
     if (!apiKey && !isCustomEndpoint) {

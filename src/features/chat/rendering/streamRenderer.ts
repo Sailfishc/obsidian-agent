@@ -1,4 +1,5 @@
 import type { ContentBlock, StreamChunk, ToolCallInfo } from '../../../core/types';
+import type { ChatRenderOptions } from './messageRenderer';
 
 export class StreamRenderer {
   private container: HTMLElement;
@@ -7,15 +8,19 @@ export class StreamRenderer {
   private currentThinkingEl: HTMLElement | null = null;
   private toolElements: Map<string, HTMLElement> = new Map();
   private collectedText = '';
+  /** Full text across all text segments (never reset on tool_use). */
+  private fullText = '';
   private collectedThinking = '';
   private toolCalls: ToolCallInfo[] = [];
   /** Ordered content blocks to faithfully reproduce interleaved stream order. */
   private contentBlocks: ContentBlock[] = [];
   private onAutoScroll?: () => void;
+  private renderOpts: ChatRenderOptions;
 
-  constructor(container: HTMLElement, onAutoScroll?: () => void) {
+  constructor(container: HTMLElement, onAutoScroll?: () => void, opts?: ChatRenderOptions) {
     this.container = container;
     this.onAutoScroll = onAutoScroll;
+    this.renderOpts = opts ?? { showThinkingBlocks: true, showToolBlocks: true };
     this.messageEl = container.createDiv({ cls: 'oa-message oa-message-assistant oa-message-streaming' });
   }
 
@@ -52,6 +57,7 @@ export class StreamRenderer {
       this.contentBlocks.push({ type: 'text', content: '' });
     }
     this.collectedText += text;
+    this.fullText += text;
     this.currentTextEl.textContent = this.collectedText;
 
     // Update last text block
@@ -62,6 +68,20 @@ export class StreamRenderer {
   }
 
   private appendThinking(text: string): void {
+    // Always track thinking text for persistence, but only render if enabled
+    if (!this.renderOpts.showThinkingBlocks) {
+      // Still collect thinking text but don't create DOM
+      this.collectedThinking += text;
+      // Track in content blocks for persistence
+      const lastBlock = this.contentBlocks[this.contentBlocks.length - 1];
+      if (lastBlock && lastBlock.type === 'thinking') {
+        (lastBlock as { type: 'thinking'; content: string }).content = this.collectedThinking;
+      } else {
+        this.contentBlocks.push({ type: 'thinking', content: this.collectedThinking });
+      }
+      return;
+    }
+
     if (!this.currentThinkingEl) {
       const thinkingWrapper = this.messageEl.createDiv({ cls: 'oa-thinking oa-thinking-active' });
       const headerEl = thinkingWrapper.createDiv({ cls: 'oa-thinking-header' });
@@ -92,6 +112,13 @@ export class StreamRenderer {
       this.collectedThinking = '';
     }
 
+    // Always track tool calls for persistence
+    this.toolCalls.push({ id, name, input });
+    this.contentBlocks.push({ type: 'tool_use', toolId: id });
+
+    // Only render tool UI if enabled
+    if (!this.renderOpts.showToolBlocks) return;
+
     const toolEl = this.messageEl.createDiv({ cls: 'oa-tool-call oa-tool-running' });
     const headerEl = toolEl.createDiv({ cls: 'oa-tool-header' });
     headerEl.createSpan({ cls: 'oa-tool-icon', text: getToolIcon(name) });
@@ -106,8 +133,6 @@ export class StreamRenderer {
     spinnerEl.textContent = '\u23F3';
 
     this.toolElements.set(id, toolEl);
-    this.toolCalls.push({ id, name, input });
-    this.contentBlocks.push({ type: 'tool_use', toolId: id });
   }
 
   private addToolResult(id: string, content: string, isError?: boolean): void {
@@ -146,7 +171,7 @@ export class StreamRenderer {
   finalize(): { text: string; thinking: string; toolCalls: ToolCallInfo[]; contentBlocks: ContentBlock[] } {
     this.messageEl.removeClass('oa-message-streaming');
     return {
-      text: this.collectedText,
+      text: this.fullText || this.collectedText,
       thinking: this.collectedThinking,
       toolCalls: this.toolCalls,
       contentBlocks: this.contentBlocks,

@@ -13,7 +13,6 @@ export class InputArea {
   private controlsRightEl: HTMLElement;
   private contextRowEl: HTMLElement;
   private textArea: HTMLTextAreaElement;
-  private sendButton: HTMLButtonElement;
   private cancelButton: HTMLButtonElement;
   private statusEl: HTMLElement;
   private callbacks: InputAreaCallbacks;
@@ -29,18 +28,19 @@ export class InputArea {
     this.controlsLeftEl = this.controlsRowEl.createDiv({ cls: 'oa-controls-left' });
     this.controlsRightEl = this.controlsRowEl.createDiv({ cls: 'oa-controls-right' });
 
-    // Context pill row (above textarea)
-    this.contextRowEl = this.container.createDiv({ cls: 'oa-context-row' });
+    // Unified input box: context pills + textarea + footer inside one bordered container
+    const inputBox = this.container.createDiv({ cls: 'oa-input-box' });
 
-    const inputRow = this.container.createDiv({ cls: 'oa-input-row' });
+    // Context pill row (inside input box, above textarea)
+    this.contextRowEl = inputBox.createDiv({ cls: 'oa-context-row' });
 
-    this.textArea = inputRow.createEl('textarea', {
+    this.textArea = inputBox.createEl('textarea', {
       cls: 'oa-input-textarea',
       attr: { placeholder: 'Ask anything… Type @ to attach files' },
     });
 
-    // Footer: status (left) + buttons (right)
-    const footerRow = this.container.createDiv({ cls: 'oa-input-footer' });
+    // Footer: status (left) + buttons (right), inside input box
+    const footerRow = inputBox.createDiv({ cls: 'oa-input-footer' });
 
     this.statusEl = footerRow.createDiv({ cls: 'oa-chat-status' });
 
@@ -51,11 +51,6 @@ export class InputArea {
       text: 'Cancel',
     });
     this.cancelButton.style.display = 'none';
-
-    this.sendButton = buttonGroup.createEl('button', {
-      cls: 'oa-btn oa-btn-send',
-      text: 'Send',
-    });
 
     this.setupEventListeners();
   }
@@ -90,10 +85,6 @@ export class InputArea {
         this.textArea.selectionEnd = pos - 1;
         this.callbacks.onTriggerContextSearch?.();
       }
-    });
-
-    this.sendButton.addEventListener('click', () => {
-      this.handleSend();
     });
 
     this.cancelButton.addEventListener('click', () => {
@@ -177,7 +168,6 @@ export class InputArea {
 
   setStreaming(streaming: boolean): void {
     this.streaming = streaming;
-    this.sendButton.style.display = streaming ? 'none' : '';
     this.cancelButton.style.display = streaming ? '' : 'none';
     this.textArea.disabled = streaming;
     if (!streaming) {

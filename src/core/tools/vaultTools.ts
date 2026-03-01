@@ -11,8 +11,20 @@ import type { BashSpawnContext } from '@mariozechner/pi-coding-agent';
 import { isBlockedCommand } from '../security/blocklist';
 
 export interface VaultToolsOptions {
-  blockedCommands?: string[];
+  blockedCommands?: { unix: string[]; windows: string[] };
   enableBlocklist?: boolean;
+  bashEnabled?: boolean;
+}
+
+/**
+ * Returns the effective blocked commands list for the current platform.
+ * On Windows, both unix and windows lists are merged (Git Bash can execute unix commands).
+ */
+function getPlatformBlockedCommands(cmds: { unix: string[]; windows: string[] }): string[] {
+  if (process.platform === 'win32') {
+    return [...cmds.unix, ...cmds.windows];
+  }
+  return cmds.unix;
 }
 
 /**
@@ -29,22 +41,27 @@ export function createReadOnlyVaultTools(vaultPath: string) {
 }
 
 export function createVaultTools(vaultPath: string, options?: VaultToolsOptions) {
+  const bashEnabled = options?.bashEnabled !== false;
+
   const bashSpawnHook = (ctx: BashSpawnContext): BashSpawnContext => {
     if (options?.enableBlocklist && options.blockedCommands) {
-      if (isBlockedCommand(ctx.command, options.blockedCommands)) {
+      const blocked = getPlatformBlockedCommands(options.blockedCommands);
+      if (isBlockedCommand(ctx.command, blocked)) {
         throw new Error(`Command blocked by safety settings: ${ctx.command.slice(0, 80)}`);
       }
     }
     return ctx;
   };
 
-  return [
+  const tools = [
     createReadTool(vaultPath),
-    createBashTool(vaultPath, { spawnHook: bashSpawnHook }),
+    ...(bashEnabled ? [createBashTool(vaultPath, { spawnHook: bashSpawnHook })] : []),
     createEditTool(vaultPath),
     createWriteTool(vaultPath),
     createGrepTool(vaultPath),
     createFindTool(vaultPath),
     createLsTool(vaultPath),
   ];
+
+  return tools;
 }

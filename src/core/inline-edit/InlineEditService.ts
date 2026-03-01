@@ -66,12 +66,14 @@ export class InlineEditService {
     const systemPrompt = buildInlineEditSystemPrompt({ vaultPath });
     const model = this.resolveModel();
 
+    const thinkingLevel = settings.general.thinkingLevel;
+
     this.agent = new Agent({
       initialState: {
         systemPrompt,
         model,
-        thinkingLevel: (settings.thinkingLevel && settings.thinkingLevel !== 'off')
-          ? settings.thinkingLevel
+        thinkingLevel: (thinkingLevel && thinkingLevel !== 'off')
+          ? thinkingLevel
           : 'medium',
         tools,
       },
@@ -83,7 +85,16 @@ export class InlineEditService {
   }
 
   private resolveModel(): Model<any> | undefined {
-    const { provider, modelId } = this.settings;
+    // Use override model if inline edit is configured to not use global model
+    const useGlobal = this.settings.inlineEdit.useGlobalModel;
+    const override = this.settings.inlineEdit.modelOverride;
+
+    const provider = (!useGlobal && override?.provider)
+      ? override.provider
+      : this.settings.general.provider;
+    const modelId = (!useGlobal && override?.modelId)
+      ? override.modelId
+      : this.settings.general.modelId;
 
     if (provider === 'custom-openai') {
       const cfg = this.settings.customOpenAI;
@@ -114,8 +125,15 @@ export class InlineEditService {
     }
   }
 
+  /** Compute the effective provider for inline edit (respecting model override). */
+  private getEffectiveProvider(): string {
+    const useGlobal = this.settings.inlineEdit.useGlobalModel;
+    const override = this.settings.inlineEdit.modelOverride;
+    return (!useGlobal && override?.provider) ? override.provider : this.settings.general.provider;
+  }
+
   private getApiKey(provider: string): string | undefined {
-    if (this.settings.provider === 'custom-openai') {
+    if (this.getEffectiveProvider() === 'custom-openai') {
       return this.settings.customOpenAI.apiKey?.trim() || undefined;
     }
 
@@ -154,7 +172,7 @@ export class InlineEditService {
       return;
     }
 
-    const isCustomEndpoint = this.settings.provider === 'custom-openai';
+    const isCustomEndpoint = this.getEffectiveProvider() === 'custom-openai';
     const apiKey = this.getApiKey(model.provider);
     if (!apiKey && !isCustomEndpoint) {
       yield { type: 'error', content: `No API key found for provider "${model.provider}". Set it in plugin settings or environment variables.` };

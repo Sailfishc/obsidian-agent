@@ -6,6 +6,112 @@ import { InlineEditModal } from './features/inline-edit/InlineEditModal';
 import { AgentSettingsTab } from './features/settings/SettingsTab';
 import { buildCursorContext } from './utils/inlineEditContext';
 
+/**
+ * Normalize loaded settings to the current grouped schema (v2).
+ * Handles migration from legacy flat settings and deep-merging of partial objects.
+ */
+function normalizeLoadedSettings(loaded: any): ObsidianAgentSettings {
+  if (!loaded || typeof loaded !== 'object') {
+    return JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+  }
+
+  const isLegacy = !loaded.settingsVersion || loaded.settingsVersion < 2;
+
+  // Helper: deep merge two objects (target wins for existing keys, source provides defaults)
+  const deepMerge = <T extends Record<string, any>>(defaults: T, partial: any): T => {
+    if (!partial || typeof partial !== 'object') return { ...defaults };
+    const result = { ...defaults } as any;
+    for (const key of Object.keys(defaults)) {
+      if (key in partial) {
+        if (
+          typeof defaults[key] === 'object' &&
+          defaults[key] !== null &&
+          !Array.isArray(defaults[key])
+        ) {
+          result[key] = deepMerge(defaults[key], partial[key]);
+        } else {
+          result[key] = partial[key];
+        }
+      }
+    }
+    return result;
+  };
+
+  if (isLegacy) {
+    // Migrate flat settings → grouped v2
+    return {
+      settingsVersion: 2,
+
+      general: {
+        provider: loaded.provider ?? DEFAULT_SETTINGS.general.provider,
+        modelId: loaded.modelId ?? DEFAULT_SETTINGS.general.modelId,
+        thinkingLevel: loaded.thinkingLevel ?? DEFAULT_SETTINGS.general.thinkingLevel,
+      },
+
+      security: {
+        enableBlocklist: loaded.enableBlocklist ?? DEFAULT_SETTINGS.security.enableBlocklist,
+        blockedCommands: {
+          unix: Array.isArray(loaded.blockedCommands)
+            ? loaded.blockedCommands
+            : DEFAULT_SETTINGS.security.blockedCommands.unix,
+          windows: DEFAULT_SETTINGS.security.blockedCommands.windows,
+        },
+      },
+
+      context: JSON.parse(JSON.stringify(DEFAULT_SETTINGS.context)),
+
+      appearance: {
+        enableAutoScroll: loaded.enableAutoScroll ?? DEFAULT_SETTINGS.appearance.enableAutoScroll,
+        showThinkingBlocks: DEFAULT_SETTINGS.appearance.showThinkingBlocks,
+        showToolBlocks: DEFAULT_SETTINGS.appearance.showToolBlocks,
+      },
+
+      inlineEdit: JSON.parse(JSON.stringify(DEFAULT_SETTINGS.inlineEdit)),
+
+      instructions: {
+        systemPrompt: loaded.systemPrompt ?? DEFAULT_SETTINGS.instructions.systemPrompt,
+      },
+
+      bash: JSON.parse(JSON.stringify(DEFAULT_SETTINGS.bash)),
+
+      apiKeys: loaded.apiKeys && typeof loaded.apiKeys === 'object'
+        ? loaded.apiKeys
+        : {},
+
+      customOpenAI: deepMerge(
+        DEFAULT_SETTINGS.customOpenAI,
+        loaded.customOpenAI,
+      ),
+
+      lastConversationId: loaded.lastConversationId ?? null,
+    };
+  }
+
+  // v2 settings: deep merge each group
+  return {
+    settingsVersion: 2,
+
+    general: deepMerge(DEFAULT_SETTINGS.general, loaded.general),
+    security: deepMerge(DEFAULT_SETTINGS.security, loaded.security),
+    context: deepMerge(DEFAULT_SETTINGS.context, loaded.context),
+    appearance: deepMerge(DEFAULT_SETTINGS.appearance, loaded.appearance),
+    inlineEdit: deepMerge(DEFAULT_SETTINGS.inlineEdit, loaded.inlineEdit),
+    instructions: deepMerge(DEFAULT_SETTINGS.instructions, loaded.instructions),
+    bash: deepMerge(DEFAULT_SETTINGS.bash, loaded.bash),
+
+    apiKeys: loaded.apiKeys && typeof loaded.apiKeys === 'object'
+      ? loaded.apiKeys
+      : {},
+
+    customOpenAI: deepMerge(
+      DEFAULT_SETTINGS.customOpenAI,
+      loaded.customOpenAI,
+    ),
+
+    lastConversationId: loaded.lastConversationId ?? null,
+  };
+}
+
 export default class ObsidianAgentPlugin extends Plugin {
   settings: ObsidianAgentSettings;
 
@@ -49,6 +155,12 @@ export default class ObsidianAgentPlugin extends Plugin {
       name: 'Inline edit',
       hotkeys: [{ modifiers: ['Mod', 'Shift'], key: 'e' }],
       editorCallback: (editor: Editor, view: MarkdownView) => {
+        // Gate: check if inline edit is enabled
+        if (!this.settings.inlineEdit.enabled) {
+          new Notice('Inline edit is disabled in settings');
+          return;
+        }
+
         const file = view.file;
         if (!file) {
           new Notice('No active file');
@@ -97,28 +209,17 @@ export default class ObsidianAgentPlugin extends Plugin {
 
   async loadSettings(): Promise<void> {
     const loaded = await this.loadData();
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
-
-    // Deep-merge nested objects that Object.assign won't handle correctly
-    // (older installs may have partial, null, or missing customOpenAI)
-    const loadedCustom = loaded?.customOpenAI && typeof loaded.customOpenAI === 'object'
-      ? loaded.customOpenAI
-      : {};
-    this.settings.customOpenAI = Object.assign(
-      {},
-      DEFAULT_SETTINGS.customOpenAI,
-      loadedCustom,
-    );
+    this.settings = normalizeLoadedSettings(loaded);
   }
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
 
-    // Refresh chat view model display
+    // Notify all open chat views about settings changes
     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_AGENT);
     for (const leaf of leaves) {
       const view = leaf.view as ChatView;
-      view.refreshModelDisplay?.();
+      view.onSettingsChanged?.(this.settings);
     }
   }
 

@@ -1,23 +1,18 @@
-import { ItemView, Notice, TFile, type WorkspaceLeaf } from 'obsidian';
+import { ItemView, MarkdownView, Notice, TFile, type WorkspaceLeaf } from 'obsidian';
 import type ObsidianAgentPlugin from '../../main';
 import { AgentService } from '../../core/agent/AgentService';
 import { ConversationStore } from '../../core/storage/ConversationStore';
-import type { ChatMessage, ContentBlock, ContextFile, Conversation, StreamChunk, ToolCallInfo } from '../../core/types';
+import type { ChatMessage, ContentBlock, ContextFile, Conversation, ObsidianAgentSettings, StreamChunk, ToolCallInfo } from '../../core/types';
 import { VIEW_TYPE_AGENT } from '../../core/types';
 import { getVaultPath } from '../../utils/path';
 import { generateId } from '../../utils/id';
-import { renderAssistantMessage, renderAssistantMessageInto, renderUserMessage } from './rendering/messageRenderer';
+import { renderAssistantMessage, renderAssistantMessageInto, renderUserMessage, type AssistantMessageActions } from './rendering/messageRenderer';
 import { StreamRenderer } from './rendering/streamRenderer';
 import { InputArea } from './ui/InputArea';
 import { ConversationList } from './ui/ConversationList';
 import { VaultFileSuggestModal } from './ui/VaultFileSuggestModal';
 
-/** Maximum characters per context file to keep prompt size reasonable. */
-const MAX_CHARS_PER_FILE = 20_000;
-/** Maximum total characters across all context files. */
-const MAX_TOTAL_CHARS = 100_000;
-/** Maximum number of context files that can be attached. */
-const MAX_CONTEXT_FILES = 10;
+
 
 export class ChatView extends ItemView {
   private plugin: ObsidianAgentPlugin;
@@ -41,6 +36,9 @@ export class ChatView extends ItemView {
 
   /** Becomes true after the first message is sent in the current session. */
   private sessionStarted = false;
+
+  /** Most recently focused MarkdownView (for insert-at-cursor). */
+  private lastMarkdownView: MarkdownView | null = null;
 
   // ── Persistence ───────────────────────────────────────────────────────
   private conversationStore: ConversationStore;
@@ -119,7 +117,19 @@ export class ChatView extends ItemView {
 
     // Capture active file context on first open
     this.sessionStarted = false;
+    this.includeActiveFile = this.plugin.settings.context.includeActiveFileByDefault;
     this.captureActiveFileAsContext();
+
+    // Track last focused MarkdownView for insert-at-cursor
+    this.lastMarkdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    this.registerEvent(
+      this.app.workspace.on('active-leaf-change', () => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (view) {
+          this.lastMarkdownView = view;
+        }
+      }),
+    );
 
     // Update status bar
     this.refreshStatusDisplay();
@@ -181,7 +191,43 @@ export class ChatView extends ItemView {
   private captureActiveFileAsContext(): void {
     const active = this.app.workspace.getActiveFile();
     this.activeFilePath = active?.path ?? null;
+
+    // Check excluded tags — if active file has an excluded tag, disable auto-include
+    if (this.includeActiveFile && this.activeFilePath) {
+      this.checkExcludedTags(this.activeFilePath);
+    }
+
     this.syncContextChips();
+  }
+
+  /**
+   * Check if a file's frontmatter contains any excluded tags.
+   * If so, disable auto-include for this file.
+   */
+  private checkExcludedTags(path: string): void {
+    const excludedTags = this.plugin.settings.context.excludedTags;
+    if (excludedTags.length === 0) return;
+
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) return;
+
+    const cache = this.app.metadataCache.getFileCache(file);
+    if (!cache?.frontmatter) return;
+
+    // Obsidian stores tags in frontmatter as 'tags' (array or string) or 'tag'
+    const fmTags = cache.frontmatter.tags ?? cache.frontmatter.tag;
+    if (!fmTags) return;
+
+    const tagList: string[] = Array.isArray(fmTags)
+      ? fmTags.map((t: any) => String(t).replace(/^#/, '').toLowerCase())
+      : String(fmTags).split(',').map(t => t.trim().replace(/^#/, '').toLowerCase());
+
+    const normalizedExcluded = excludedTags.map(t => t.toLowerCase());
+
+    const hasExcluded = tagList.some(t => normalizedExcluded.includes(t));
+    if (hasExcluded) {
+      this.includeActiveFile = false;
+    }
   }
 
   /** Compute the full list of context paths and push them to the UI. */
@@ -213,8 +259,9 @@ export class ChatView extends ItemView {
 
   /** Open the vault file search modal (triggered by @). */
   private openContextSearch(): void {
-    if (this.manualContextPaths.size + (this.includeActiveFile && this.activeFilePath ? 1 : 0) >= MAX_CONTEXT_FILES) {
-      new Notice(`Maximum ${MAX_CONTEXT_FILES} context files allowed`);
+    const maxContextFiles = this.plugin.settings.context.limits.maxContextFiles;
+    if (this.manualContextPaths.size + (this.includeActiveFile && this.activeFilePath ? 1 : 0) >= maxContextFiles) {
+      new Notice(`Maximum ${maxContextFiles} context files allowed`);
       return;
     }
 
@@ -272,6 +319,7 @@ export class ChatView extends ItemView {
     const paths = this.getSelectedContextPaths();
     const contextFiles: ContextFile[] = [];
     let totalChars = 0;
+    const { maxCharsPerFile, maxTotalChars } = this.plugin.settings.context.limits;
 
     for (const path of paths) {
       const abstractFile = this.app.vault.getAbstractFileByPath(path);
@@ -281,13 +329,13 @@ export class ChatView extends ItemView {
         let content = await this.app.vault.cachedRead(abstractFile);
 
         // Per-file truncation
-        if (content.length > MAX_CHARS_PER_FILE) {
-          content = content.slice(0, MAX_CHARS_PER_FILE) + '\n\n[TRUNCATED]';
+        if (content.length > maxCharsPerFile) {
+          content = content.slice(0, maxCharsPerFile) + '\n\n[TRUNCATED]';
         }
 
         // Total budget check
-        if (totalChars + content.length > MAX_TOTAL_CHARS) {
-          const remaining = MAX_TOTAL_CHARS - totalChars;
+        if (totalChars + content.length > maxTotalChars) {
+          const remaining = maxTotalChars - totalChars;
           if (remaining > 0) {
             content = content.slice(0, remaining) + '\n\n[TRUNCATED]';
             contextFiles.push({ path, content });
@@ -394,11 +442,15 @@ export class ChatView extends ItemView {
     if (conv.messages.length === 0) {
       this.renderWelcome();
     } else {
+      const renderOpts = {
+        showThinkingBlocks: this.plugin.settings.appearance.showThinkingBlocks,
+        showToolBlocks: this.plugin.settings.appearance.showToolBlocks,
+      };
       for (const msg of conv.messages) {
         if (msg.role === 'user') {
           renderUserMessage(this.messagesEl, msg);
         } else {
-          renderAssistantMessage(this.messagesEl, msg, this);
+          renderAssistantMessage(this.messagesEl, msg, this, this.getAssistantActions(), renderOpts);
         }
       }
     }
@@ -412,7 +464,7 @@ export class ChatView extends ItemView {
     this.conversationList?.setActive(id);
 
     // Reset context for restored conversations
-    this.includeActiveFile = true;
+    this.includeActiveFile = this.plugin.settings.context.includeActiveFileByDefault;
     this.manualContextPaths.clear();
     // Always capture the current active file as context, even for existing conversations.
     // sessionStarted being true will prevent auto-updating on subsequent file opens.
@@ -475,7 +527,7 @@ export class ChatView extends ItemView {
 
   /** Map the raw thinkingLevel to a display label. */
   private getThinkingLabel(): string {
-    const level = this.plugin.settings.thinkingLevel || 'medium';
+    const level = this.plugin.settings.general.thinkingLevel || 'medium';
     const map: Record<string, string> = {
       off: 'Off',
       minimal: 'Minimal',
@@ -524,11 +576,15 @@ export class ChatView extends ItemView {
     this.inputArea.setStreaming(true);
 
     const startTime = Date.now();
+    const renderOpts = {
+      showThinkingBlocks: this.plugin.settings.appearance.showThinkingBlocks,
+      showToolBlocks: this.plugin.settings.appearance.showToolBlocks,
+    };
     const renderer = new StreamRenderer(this.messagesEl, () => {
-      if (this.plugin.settings.enableAutoScroll) {
+      if (this.plugin.settings.appearance.enableAutoScroll) {
         this.scrollToBottom();
       }
-    });
+    }, renderOpts);
     this.streamRenderer = renderer;
 
     try {
@@ -575,7 +631,7 @@ export class ChatView extends ItemView {
     if (streamingEl) {
       streamingEl.empty();
       streamingEl.className = 'oa-message oa-message-assistant';
-      renderAssistantMessageInto(streamingEl, assistantMessage, this);
+      renderAssistantMessageInto(streamingEl, assistantMessage, this, this.getAssistantActions(), renderOpts);
     }
 
     this.isStreaming = false;
@@ -614,7 +670,7 @@ export class ChatView extends ItemView {
 
     // Reset session state and context
     this.sessionStarted = false;
-    this.includeActiveFile = true;
+    this.includeActiveFile = this.plugin.settings.context.includeActiveFileByDefault;
     this.manualContextPaths.clear();
     this.captureActiveFileAsContext();
 
@@ -628,15 +684,67 @@ export class ChatView extends ItemView {
     this.inputArea.focus();
   }
 
+  // ── Assistant message action handlers ──────────────────────────────────
+
+  /** Build the action callbacks object passed to assistant message renderers. */
+  private getAssistantActions(): AssistantMessageActions {
+    return {
+      onCopy: (text: string) => this.copyToClipboard(text),
+      onInsert: (text: string) => this.insertAtCursor(text),
+    };
+  }
+
+  /** Copy text to the system clipboard. */
+  private async copyToClipboard(text: string): Promise<void> {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      new Notice('Copied to clipboard');
+    } catch {
+      // Fallback for environments where Clipboard API is blocked
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        new Notice('Copied to clipboard');
+      } catch {
+        new Notice('Failed to copy');
+      }
+    }
+  }
+
+  /** Insert text at the cursor position of the last focused Markdown editor. */
+  private insertAtCursor(text: string): void {
+    if (!text) return;
+
+    const editor =
+      this.lastMarkdownView?.editor ??
+      this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+
+    if (!editor) {
+      new Notice('No active editor — open a note first');
+      return;
+    }
+
+    const cursor = editor.getCursor();
+    editor.replaceRange(text, cursor, cursor);
+    new Notice('Inserted at cursor');
+  }
+
   private scrollToBottom(): void {
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
 
   /** Returns a user-friendly label for the currently active model. */
   private getActiveModelLabel(): string {
-    const { provider, modelId, customOpenAI } = this.plugin.settings;
+    const { provider, modelId } = this.plugin.settings.general;
     if (provider === 'custom-openai') {
-      const modelName = customOpenAI.modelId || '(not configured)';
+      const modelName = this.plugin.settings.customOpenAI.modelId || '(not configured)';
       return `custom-openai/${modelName}`;
     }
     return `${provider}/${modelId}`;
@@ -645,5 +753,27 @@ export class ChatView extends ItemView {
   refreshModelDisplay(): void {
     // Update footer status (model + thinking) — model label lives in input footer now
     this.refreshStatusDisplay();
+  }
+
+  /** Called by main.ts when settings change. Updates UI and runtime behavior. */
+  onSettingsChanged(settings: ObsidianAgentSettings): void {
+    this.refreshStatusDisplay();
+
+    // Re-render existing messages if appearance settings changed
+    if (this.messages.length > 0 && !this.isStreaming) {
+      const renderOpts = {
+        showThinkingBlocks: settings.appearance.showThinkingBlocks,
+        showToolBlocks: settings.appearance.showToolBlocks,
+      };
+      this.messagesEl.empty();
+      for (const msg of this.messages) {
+        if (msg.role === 'user') {
+          renderUserMessage(this.messagesEl, msg);
+        } else {
+          renderAssistantMessage(this.messagesEl, msg, this, this.getAssistantActions(), renderOpts);
+        }
+      }
+      this.scrollToBottom();
+    }
   }
 }

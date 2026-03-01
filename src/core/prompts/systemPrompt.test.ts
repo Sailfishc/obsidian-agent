@@ -9,12 +9,24 @@ describe('buildVaultSystemPrompt', () => {
     expect(prompt).toContain(vaultPath);
   });
 
-  it('should include all available tools', () => {
+  it('should include all available tools by default', () => {
     const prompt = buildVaultSystemPrompt({ vaultPath });
     const expectedTools = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'];
     for (const tool of expectedTools) {
       expect(prompt).toContain(`- ${tool}:`);
     }
+  });
+
+  it('should exclude bash tool when disabled', () => {
+    const prompt = buildVaultSystemPrompt({ vaultPath, enabledTools: { bash: false } });
+    expect(prompt).not.toContain('- bash:');
+    expect(prompt).toContain('- read:');
+    expect(prompt).toContain('- edit:');
+  });
+
+  it('should include bash tool when explicitly enabled', () => {
+    const prompt = buildVaultSystemPrompt({ vaultPath, enabledTools: { bash: true } });
+    expect(prompt).toContain('- bash:');
   });
 
   it('should include Obsidian-specific guidelines', () => {

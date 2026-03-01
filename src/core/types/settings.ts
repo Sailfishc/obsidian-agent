@@ -7,18 +7,56 @@ export interface CustomOpenAISettings {
 }
 
 export interface ObsidianAgentSettings {
-  provider: string;
-  modelId: string;
-  thinkingLevel: ThinkingLevel;
+  settingsVersion: 2;
+
+  general: {
+    provider: string;
+    modelId: string;
+    thinkingLevel: ThinkingLevel;
+  };
+
+  security: {
+    enableBlocklist: boolean;
+    blockedCommands: {
+      unix: string[];
+      windows: string[];
+    };
+  };
+
+  context: {
+    includeActiveFileByDefault: boolean;
+    excludedTags: string[];
+    limits: {
+      maxContextFiles: number;
+      maxCharsPerFile: number;
+      maxTotalChars: number;
+    };
+  };
+
+  appearance: {
+    enableAutoScroll: boolean;
+    showThinkingBlocks: boolean;
+    showToolBlocks: boolean;
+  };
+
+  inlineEdit: {
+    enabled: boolean;
+    useGlobalModel: boolean;
+    modelOverride?: {
+      provider: string;
+      modelId: string;
+    };
+  };
+
+  instructions: {
+    systemPrompt: string;
+  };
+
+  bash: {
+    enabled: boolean;
+  };
 
   apiKeys: Record<string, string>;
-
-  systemPrompt: string;
-  enableBlocklist: boolean;
-  blockedCommands: string[];
-
-  enableAutoScroll: boolean;
-
   customOpenAI: CustomOpenAISettings;
 
   /** ID of the last active conversation (for restoring on reload). */
@@ -26,21 +64,60 @@ export interface ObsidianAgentSettings {
 }
 
 export const DEFAULT_SETTINGS: ObsidianAgentSettings = {
-  provider: 'anthropic',
-  modelId: 'claude-sonnet-4-20250514',
-  thinkingLevel: 'medium',
+  settingsVersion: 2,
+
+  general: {
+    provider: 'anthropic',
+    modelId: 'claude-sonnet-4-20250514',
+    thinkingLevel: 'medium',
+  },
+
+  security: {
+    enableBlocklist: true,
+    blockedCommands: {
+      unix: [
+        'rm -rf',
+        'chmod 777',
+        'chmod -R 777',
+      ],
+      windows: [
+        'format',
+        'del /f /s /q',
+        'rd /s /q',
+      ],
+    },
+  },
+
+  context: {
+    includeActiveFileByDefault: true,
+    excludedTags: [],
+    limits: {
+      maxContextFiles: 10,
+      maxCharsPerFile: 20_000,
+      maxTotalChars: 100_000,
+    },
+  },
+
+  appearance: {
+    enableAutoScroll: true,
+    showThinkingBlocks: true,
+    showToolBlocks: true,
+  },
+
+  inlineEdit: {
+    enabled: true,
+    useGlobalModel: true,
+  },
+
+  instructions: {
+    systemPrompt: '',
+  },
+
+  bash: {
+    enabled: true,
+  },
 
   apiKeys: {},
-
-  systemPrompt: '',
-  enableBlocklist: true,
-  blockedCommands: [
-    'rm -rf',
-    'chmod 777',
-    'chmod -R 777',
-  ],
-
-  enableAutoScroll: true,
 
   customOpenAI: {
     baseUrl: '',
