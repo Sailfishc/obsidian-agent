@@ -5,6 +5,7 @@ import { McpStorage } from './core/mcp/McpStorage';
 import { McpServerManager } from './core/mcp/McpServerManager';
 import { McpToolAdapter } from './core/mcp/McpToolAdapter';
 import { SkillManager } from './core/skills/SkillManager';
+import { SkillStorage } from './core/skills/SkillStorage';
 import { ChatView } from './features/chat/ChatView';
 import { InlineEditModal } from './features/inline-edit/InlineEditModal';
 import { AgentSettingsTab } from './features/settings/SettingsTab';
@@ -125,6 +126,7 @@ export default class ObsidianAgentPlugin extends Plugin {
   mcpManager: McpServerManager;
   mcpToolAdapter: McpToolAdapter;
   skillManager: SkillManager;
+  skillStorage: SkillStorage;
 
   /** Debounced skill reload for vault file events (trailing to catch final state). */
   private debouncedSkillReload = debounce(async () => {
@@ -143,6 +145,7 @@ export default class ObsidianAgentPlugin extends Plugin {
 
     // Initialize Skills
     this.skillManager = new SkillManager(this.app, () => this.settings.skills);
+    this.skillStorage = new SkillStorage(this.app, () => this.settings.skills);
     await this.skillManager.reload();
 
     // Watch vault for SKILL.md changes
@@ -263,6 +266,12 @@ export default class ObsidianAgentPlugin extends Plugin {
       const view = leaf.view as ChatView;
       view.onMcpConfigChanged?.();
     }
+  }
+
+  /** Reload skills from disk and broadcast to all views. Called by SkillsSettingsManager. */
+  async reloadSkillsAndBroadcast(): Promise<void> {
+    await this.skillManager?.reload();
+    this.notifySkillsChanged();
   }
 
   /** Notify all open ChatViews that skills have been reloaded. */

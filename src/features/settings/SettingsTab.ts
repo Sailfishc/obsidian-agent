@@ -2,6 +2,7 @@ import { type App, PluginSettingTab, Setting } from 'obsidian';
 import type ObsidianAgentPlugin from '../../main';
 import { AgentService } from '../../core/agent/AgentService';
 import { McpSettingsManager } from './mcp/McpSettingsManager';
+import { SkillsSettingsManager } from './skills/SkillsSettingsManager';
 
 const THINKING_LEVELS = [
   { value: 'off', label: 'Off' },
@@ -320,7 +321,7 @@ export class AgentSettingsTab extends PluginSettingTab {
     new Setting(containerEl).setName('Skills').setHeading();
 
     containerEl.createEl('p', {
-      text: 'Skills are SKILL.md files that provide specialized instructions for the agent. Place them in the configured directories within your vault.',
+      text: 'Skills are SKILL.md files that provide specialized instructions for the agent. Create them here or place them in the configured directories within your vault.',
       cls: 'setting-item-description oa-settings-description',
     });
 
@@ -368,35 +369,9 @@ export class AgentSettingsTab extends PluginSettingTab {
           });
         });
 
-      // Show loaded skills summary
-      const skills = this.plugin.skillManager?.getSkills() ?? [];
-      const diagnostics = this.plugin.skillManager?.getDiagnostics() ?? [];
-
-      if (skills.length > 0) {
-        const summaryEl = containerEl.createDiv({ cls: 'oa-settings-description' });
-        summaryEl.createEl('p', {
-          text: `✅ ${skills.length} skill(s) loaded: ${skills.map(s => s.name).join(', ')}`,
-        });
-      } else {
-        containerEl.createEl('p', {
-          text: '📭 No skills found. Create SKILL.md files in the configured directories.',
-          cls: 'setting-item-description oa-settings-description',
-        });
-      }
-
-      if (diagnostics.length > 0) {
-        const diagEl = containerEl.createDiv({ cls: 'oa-settings-description' });
-        diagEl.createEl('p', {
-          text: `⚠️ ${diagnostics.length} diagnostic(s):`,
-        });
-        const list = diagEl.createEl('ul');
-        for (const d of diagnostics.slice(0, 5)) {
-          list.createEl('li', { text: `[${d.type}] ${d.message} (${d.path})` });
-        }
-        if (diagnostics.length > 5) {
-          list.createEl('li', { text: `… and ${diagnostics.length - 5} more` });
-        }
-      }
+      // Skills CRUD list
+      const skillsContainer = containerEl.createDiv({ cls: 'oa-skills-settings' });
+      new SkillsSettingsManager(skillsContainer, this.plugin);
     }
   }
 

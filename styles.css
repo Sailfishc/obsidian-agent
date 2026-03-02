@@ -1455,6 +1455,145 @@
   margin-right: auto;
 }
 
+/* ── Skills Settings ─────────────────────────────────────────────────── */
+
+.oa-skills-settings {
+  margin-top: 8px;
+}
+
+.oa-skill-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.oa-skill-label {
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+}
+
+.oa-skill-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 16px;
+  font-size: var(--font-ui-small);
+}
+
+.oa-skill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.oa-skill-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+
+.oa-skill-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.oa-skill-status-active {
+  background: var(--color-green);
+}
+
+.oa-skill-status-manual {
+  background: var(--color-orange, var(--text-faint));
+}
+
+.oa-skill-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.oa-skill-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.oa-skill-name {
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+}
+
+.oa-skill-manual-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.oa-skill-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.oa-skill-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.oa-skill-diagnostics {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.oa-skill-diag-header {
+  margin: 0 0 4px;
+}
+
+.oa-skill-diagnostics ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.oa-skill-diagnostics li {
+  font-size: 11px;
+}
+
+/* ── Skill Modal ──────────────────────────────────────────────────────── */
+
+.oa-skill-modal {
+  max-width: 500px;
+}
+
+.oa-skill-textarea {
+  width: 100%;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  resize: vertical;
+  min-height: 120px;
+}
+
+.oa-skill-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
 /* ── Slash Command Dropdown ──────────────────────────────────────────── */
 
 .oa-slash-dropdown {
