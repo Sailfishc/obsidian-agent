@@ -1,4 +1,4 @@
-import { type App, TFile, TFolder, normalizePath } from 'obsidian';
+import { type App, TFile, normalizePath } from 'obsidian';
 import { parseFrontmatter, stripFrontmatter } from '@/utils/frontmatter';
 import type { SkillDefinition, SkillDiagnostic, SkillFrontmatter, SkillsSettings } from './types';
 import { formatSkillsForPrompt } from './types';
@@ -56,10 +56,10 @@ function validateDescription(description: string | undefined): string[] {
 
 function escapeXml(str: string): string {
   return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"')
     .replace(/'/g, '&apos;');
 }
 
@@ -80,6 +80,7 @@ export class SkillManager {
 
   /**
    * Scan configured roots for SKILL.md files.
+   * Uses vault.adapter (filesystem) for discovery to avoid stale cache issues.
    * Safe: never throws; malformed skills are skipped with diagnostics.
    */
   async reload(): Promise<{ skills: SkillDefinition[]; diagnostics: SkillDiagnostic[] }> {
@@ -93,17 +94,20 @@ export class SkillManager {
       return { skills: [], diagnostics: [] };
     }
 
+    console.log(`[skills] reload() starting, roots: ${JSON.stringify(options.roots)}`);
+
     for (const root of options.roots) {
       const normalizedRoot = normalizePath(root);
-      const folder = this.app.vault.getAbstractFileByPath(normalizedRoot);
 
-      if (!folder || !(folder instanceof TFolder)) {
-        // Root doesn't exist yet — that's fine, skip silently
+      // Use adapter.exists() — reads filesystem directly, not cache
+      const rootExists = await this.app.vault.adapter.exists(normalizedRoot);
+      console.log(`[skills] root "${normalizedRoot}" exists on disk: ${rootExists}`);
+      if (!rootExists) {
         continue;
       }
 
       try {
-        const result = await this.scanFolder(folder, normalizedRoot);
+        const result = await this.scanFolder(normalizedRoot);
         allDiagnostics.push(...result.diagnostics);
 
         for (const skill of result.skills) {
@@ -191,15 +195,8 @@ export class SkillManager {
     }
 
     try {
-      const file = this.app.vault.getAbstractFileByPath(skill.filePath);
-      if (!file || !(file instanceof TFile)) {
-        return {
-          expandedText: null,
-          error: `Skill file not found: ${skill.filePath}`,
-        };
-      }
-
-      const rawContent = await this.app.vault.cachedRead(file);
+      // Read from filesystem directly for freshness
+      const rawContent = await this.app.vault.adapter.read(skill.filePath);
       const body = stripFrontmatter(rawContent);
 
       let expanded = `<skill name="${escapeXml(skill.name)}" location="${escapeXml(skill.filePath)}">`;
@@ -218,43 +215,50 @@ export class SkillManager {
     }
   }
 
-  // ── Private: discovery ─────────────────────────────────────────────────
+  // ── Private: discovery (filesystem-based, like Claudian) ───────────────
 
   /**
-   * Recursively scan a folder for SKILL.md files.
+   * Recursively scan a folder for SKILL.md files using vault.adapter (filesystem).
+   * This avoids Obsidian's in-memory cache which may be stale after writes.
    */
   private async scanFolder(
-    folder: TFolder,
-    _rootPath: string,
+    folderPath: string,
   ): Promise<{ skills: SkillDefinition[]; diagnostics: SkillDiagnostic[] }> {
     const skills: SkillDefinition[] = [];
     const diagnostics: SkillDiagnostic[] = [];
 
-    // Sort children by path for deterministic ordering (collision = first wins)
-    const sortedChildren = [...folder.children].sort((a, b) => a.path.localeCompare(b.path));
+    let listing: { files: string[]; folders: string[] };
+    try {
+      listing = await this.app.vault.adapter.list(folderPath);
+    } catch {
+      console.warn(`[skills] adapter.list("${folderPath}") threw`);
+      return { skills, diagnostics };
+    }
 
-    for (const child of sortedChildren) {
-      if (child.name.startsWith('.')) continue;
+    console.log(`[skills] scanFolder("${folderPath}"): ${listing.folders.length} subfolder(s), ${listing.files.length} file(s)`, listing.folders);
 
-      if (child instanceof TFolder) {
-        // Check if this folder contains a SKILL.md
-        const skillFile = child.children.find(
-          (c): c is TFile => c instanceof TFile && c.name === SKILL_FILE_NAME,
-        );
+    // Sort folders for deterministic ordering (collision = first wins)
+    const sortedFolders = [...listing.folders].sort((a, b) => a.localeCompare(b));
 
-        if (skillFile) {
-          const result = await this.parseSkillFile(skillFile, child.name);
-          diagnostics.push(...result.diagnostics);
-          if (result.skill) {
-            skills.push(result.skill);
-          }
+    for (const subfolder of sortedFolders) {
+      const folderName = subfolder.split('/').pop()!;
+      if (folderName.startsWith('.')) continue;
+
+      const skillFilePath = normalizePath(`${subfolder}/${SKILL_FILE_NAME}`);
+
+      // Check if this subfolder has a SKILL.md
+      if (await this.app.vault.adapter.exists(skillFilePath)) {
+        const result = await this.parseSkillFile(skillFilePath, folderName);
+        diagnostics.push(...result.diagnostics);
+        if (result.skill) {
+          skills.push(result.skill);
         }
-
-        // Also recurse into subfolders (nested skills)
-        const subResult = await this.scanFolder(child, _rootPath);
-        skills.push(...subResult.skills);
-        diagnostics.push(...subResult.diagnostics);
       }
+
+      // Also recurse into subfolders (nested skills)
+      const subResult = await this.scanFolder(subfolder);
+      skills.push(...subResult.skills);
+      diagnostics.push(...subResult.diagnostics);
     }
 
     return { skills, diagnostics };
@@ -262,16 +266,16 @@ export class SkillManager {
 
   /**
    * Parse a single SKILL.md file into a SkillDefinition.
+   * Reads from filesystem via vault.adapter.
    */
   private async parseSkillFile(
-    file: TFile,
+    filePath: string,
     parentDirName: string,
   ): Promise<{ skill: SkillDefinition | null; diagnostics: SkillDiagnostic[] }> {
     const diagnostics: SkillDiagnostic[] = [];
-    const filePath = file.path;
 
     try {
-      const rawContent = await this.app.vault.cachedRead(file);
+      const rawContent = await this.app.vault.adapter.read(filePath);
       let frontmatter: SkillFrontmatter;
 
       try {
@@ -314,8 +318,9 @@ export class SkillManager {
         return { skill: null, diagnostics };
       }
 
-      // Compute vault-relative base directory
-      const baseDir = file.parent?.path ?? '';
+      // Compute vault-relative base directory (parent of SKILL.md)
+      const lastSlash = filePath.lastIndexOf('/');
+      const baseDir = lastSlash > 0 ? filePath.substring(0, lastSlash) : '';
 
       return {
         skill: {

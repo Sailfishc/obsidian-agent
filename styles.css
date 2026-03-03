@@ -1468,6 +1468,12 @@
   margin-bottom: 8px;
 }
 
+.oa-skill-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .oa-skill-label {
   font-weight: 600;
   font-size: var(--font-ui-small);

@@ -14,6 +14,10 @@ export interface SkillData {
  * Vault CRUD for SKILL.md files.
  * Skills are stored at `<root>/<name>/SKILL.md` where root is the first
  * configured skills directory.
+ *
+ * Uses vault.adapter (filesystem-level) exclusively — same as Claudian.
+ * This avoids issues with Obsidian's vault cache not tracking dot-prefixed
+ * folders like `.claude/`.
  */
 export class SkillStorage {
   private app: App;
@@ -29,11 +33,7 @@ export class SkillStorage {
     const roots = this.getSettings().roots;
     const root = roots.length > 0 ? roots[0] : '.claude/skills';
     const normalized = normalizePath(root);
-
-    if (!await this.app.vault.adapter.exists(normalized)) {
-      await this.app.vault.adapter.mkdir(normalized);
-    }
-
+    await this.ensureFolder(normalized);
     return normalized;
   }
 
@@ -47,6 +47,24 @@ export class SkillStorage {
   private async skillFilePath(name: string): Promise<string> {
     const folder = await this.skillFolderPath(name);
     return normalizePath(`${folder}/${SKILL_FILE_NAME}`);
+  }
+
+  /**
+   * Ensure a folder exists on disk, creating parent folders as needed.
+   * Uses adapter.mkdir() directly — works for dot-prefixed paths.
+   */
+  private async ensureFolder(path: string): Promise<void> {
+    if (await this.app.vault.adapter.exists(path)) return;
+
+    // Create parent folders recursively
+    const parts = path.split('/').filter(Boolean);
+    let current = '';
+    for (const part of parts) {
+      current = current ? `${current}/${part}` : part;
+      if (!await this.app.vault.adapter.exists(current)) {
+        await this.app.vault.adapter.mkdir(current);
+      }
+    }
   }
 
   /** Serialize a SkillData into SKILL.md content (frontmatter + body). */
@@ -75,14 +93,19 @@ export class SkillStorage {
 
     const folderPath = await this.skillFolderPath(data.name);
     const filePath = await this.skillFilePath(data.name);
+    const content = this.serialize(data);
 
     // Ensure the skill folder exists
-    if (!await this.app.vault.adapter.exists(folderPath)) {
-      await this.app.vault.adapter.mkdir(folderPath);
-    }
+    await this.ensureFolder(folderPath);
 
-    const content = this.serialize(data);
+    // Write the SKILL.md file (adapter.write creates or overwrites)
     await this.app.vault.adapter.write(filePath, content);
+
+    console.log(`[skills] Saved skill file: ${filePath}`);
+
+    // Verify write
+    const exists = await this.app.vault.adapter.exists(filePath);
+    console.log(`[skills] Verified file on disk: ${exists}`);
   }
 
   /** Delete a skill folder and its SKILL.md. */

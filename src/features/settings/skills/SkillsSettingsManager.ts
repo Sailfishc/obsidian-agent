@@ -20,11 +20,20 @@ export class SkillsSettingsManager {
   private render() {
     this.containerEl.empty();
 
-    // Header with add button
+    // Header with actions
     const headerEl = this.containerEl.createDiv({ cls: 'oa-skill-header' });
     headerEl.createSpan({ text: 'Skills', cls: 'oa-skill-label' });
 
-    const addBtn = headerEl.createEl('button', {
+    const actionsEl = headerEl.createDiv({ cls: 'oa-skill-header-actions' });
+
+    const refreshBtn = actionsEl.createEl('button', {
+      cls: 'oa-mcp-action-btn',
+      attr: { 'aria-label': 'Refresh', type: 'button' },
+    });
+    setIcon(refreshBtn, 'refresh-cw');
+    refreshBtn.addEventListener('click', () => { void this.refreshSkills(); });
+
+    const addBtn = actionsEl.createEl('button', {
       cls: 'oa-mcp-action-btn',
       attr: { 'aria-label': 'Create skill', type: 'button' },
     });
@@ -193,6 +202,18 @@ export class SkillsSettingsManager {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       new Notice(`Failed to delete skill: ${msg}`);
+    }
+  }
+
+  /** Manually reload skills from disk and re-render the list. */
+  private async refreshSkills(): Promise<void> {
+    try {
+      await this.plugin.reloadSkillsAndBroadcast();
+      this.render();
+      new Notice('Skills refreshed');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      new Notice(`Failed to refresh skills: ${msg}`);
     }
   }
 
