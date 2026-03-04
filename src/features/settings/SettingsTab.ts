@@ -3,6 +3,8 @@ import type ObsidianAgentPlugin from '../../main';
 import { AgentService } from '../../core/agent/AgentService';
 import { McpSettingsManager } from './mcp/McpSettingsManager';
 import { SkillsSettingsManager } from './skills/SkillsSettingsManager';
+import { EnvironmentSnippetsManager } from './environment/EnvironmentSnippetsManager';
+import { getConfiguredModels, makeModelKey } from '../../utils/environment';
 
 const THINKING_LEVELS = [
   { value: 'off', label: 'Off' },
@@ -62,6 +64,7 @@ export class AgentSettingsTab extends PluginSettingTab {
 
     this.renderModelSection(containerEl);
     this.renderProviderConfigTabs(containerEl);
+    this.renderEnvironment(containerEl);
     this.renderCustomInstructions(containerEl);
     this.renderSkills(containerEl);
     this.renderMcp(containerEl);
@@ -664,6 +667,81 @@ export class AgentSettingsTab extends PluginSettingTab {
         }
       }
     }
+  }
+
+  // ── Environment ──────────────────────────────────────────────────────────
+
+  private renderEnvironment(containerEl: HTMLElement): void {
+    new Setting(containerEl).setName('Environment').setHeading();
+
+    // ── Custom environment variables ──
+    new Setting(containerEl)
+      .setName('Custom variables')
+      .setDesc('Environment variables for the agent, bash tool, and MCP servers (KEY=VALUE format, one per line). Shell export prefix supported.');
+
+    const envTextarea = containerEl.createEl('textarea', {
+      cls: 'oa-env-textarea',
+    });
+    envTextarea.value = this.plugin.settings.environment.envText;
+    envTextarea.placeholder = 'ANTHROPIC_API_KEY=sk-ant-...\nANTHROPIC_BASE_URL=https://...\nANTHROPIC_MODEL=claude-sonnet-4-20250514';
+    envTextarea.rows = 6;
+    let envSaveTimer: ReturnType<typeof setTimeout> | null = null;
+    envTextarea.addEventListener('input', () => {
+      this.plugin.settings.environment.envText = envTextarea.value;
+      // Debounce save + MCP reset to avoid resetting on every keystroke
+      if (envSaveTimer) clearTimeout(envSaveTimer);
+      envSaveTimer = setTimeout(async () => {
+        await this.plugin.saveSettings();
+        await this.plugin.mcpToolAdapter?.reset();
+      }, 500);
+    });
+
+    // ── Custom Context Limits ──
+    const contextLimitDesc = containerEl.createDiv({ cls: 'oa-env-context-limits' });
+    new Setting(contextLimitDesc)
+      .setName('Custom Context Limits')
+      .setDesc('Set context window sizes for your custom models. Leave empty to use the default (200k tokens).');
+
+    const configuredModels = getConfiguredModels(this.plugin.settings);
+
+    if (configuredModels.length === 0) {
+      contextLimitDesc.createEl('p', {
+        text: 'No models configured. Set a provider and model above.',
+        cls: 'setting-item-description oa-settings-hint',
+      });
+    } else {
+      for (const model of configuredModels) {
+        const key = makeModelKey(model.provider, model.modelId);
+        const currentLimit = this.plugin.settings.environment.modelContextLimits[key];
+
+        new Setting(contextLimitDesc)
+          .setName(model.label)
+          .addText(text => {
+            text.inputEl.type = 'number';
+            text.inputEl.style.width = '80px';
+            text.inputEl.min = '1000';
+            text.setPlaceholder('200k');
+            text.setValue(currentLimit ? String(currentLimit) : '');
+            text.onChange(async (value) => {
+              const num = parseInt(value, 10);
+              if (!value.trim()) {
+                delete this.plugin.settings.environment.modelContextLimits[key];
+                await this.plugin.saveSettings();
+              } else if (!isNaN(num) && num >= 1000) {
+                this.plugin.settings.environment.modelContextLimits[key] = num;
+                await this.plugin.saveSettings();
+              }
+            });
+          });
+      }
+    }
+
+    // ── Environment Snippets ──
+    const snippetsContainer = containerEl.createDiv({ cls: 'oa-env-snippets-settings' });
+    new EnvironmentSnippetsManager(snippetsContainer, this.plugin, () => {
+      // Re-render the whole settings page when a snippet is applied
+      this.display();
+    });
   }
 
   // ── Bash ────────────────────────────────────────────────────────────────

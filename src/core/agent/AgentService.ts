@@ -16,6 +16,7 @@ import { convertToLlm } from '@mariozechner/pi-coding-agent';
 import type { CustomOpenAISettings, ObsidianAgentSettings, QueryContext, StreamChunk } from '../types';
 import { buildVaultSystemPrompt } from '../prompts/systemPrompt';
 import { createVaultTools } from '../tools/vaultTools';
+import { parseEnvText, getContextLimitTokens } from '../../utils/environment';
 import type { McpServerManager } from '../mcp/McpServerManager';
 import type { McpToolAdapter } from '../mcp/McpToolAdapter';
 import type { SkillManager } from '../skills/SkillManager';
@@ -42,10 +43,12 @@ export class AgentService {
     this.mcp = mcp ?? null;
     this.deps = deps ?? {};
 
+    const customEnv = parseEnvText(settings.environment.envText);
     const tools = createVaultTools(vaultPath, {
       blockedCommands: settings.security.blockedCommands,
       enableBlocklist: settings.security.enableBlocklist,
       bashEnabled: settings.bash.enabled,
+      env: customEnv,
     });
 
     // Build system prompt with skills if available
@@ -86,9 +89,13 @@ export class AgentService {
     try {
       const allModels = getModels(provider as KnownProvider);
       const found = allModels.find(m => m.id === modelId);
-      if (found) return found;
-      // Return first model as fallback
-      return allModels.length > 0 ? allModels[0] : undefined;
+      const baseModel = found ?? (allModels.length > 0 ? allModels[0] : undefined);
+      if (!baseModel) return undefined;
+
+      // Apply user-configured context window limit (cap, not expand)
+      const limit = getContextLimitTokens(this.settings, provider, modelId);
+      const contextWindow = Math.min(baseModel.contextWindow ?? limit, limit);
+      return { ...baseModel, contextWindow };
     } catch {
       return undefined;
     }
@@ -101,6 +108,8 @@ export class AgentService {
   private resolveCustomOpenAIModel(cfg: CustomOpenAISettings): Model<'openai-completions'> | undefined {
     if (!cfg.baseUrl?.trim() || !cfg.modelId?.trim()) return undefined;
 
+    const limit = getContextLimitTokens(this.settings, 'custom-openai', cfg.modelId.trim());
+
     return {
       id: cfg.modelId.trim(),
       name: cfg.modelId.trim(),
@@ -110,7 +119,7 @@ export class AgentService {
       reasoning: false,
       input: ['text'] as ('text' | 'image')[],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: 128000,
+      contextWindow: limit,
       maxTokens: 8192,
     };
   }
@@ -126,7 +135,8 @@ export class AgentService {
       return this.settings.apiKeys[provider];
     }
 
-    // Check environment variables
+    // Check custom environment variables from settings
+    const customEnv = parseEnvText(this.settings.environment.envText);
     const envKeyMap: Record<string, string[]> = {
       anthropic: ['ANTHROPIC_API_KEY'],
       openai: ['OPENAI_API_KEY'],
@@ -138,8 +148,16 @@ export class AgentService {
       zai: ['ZAI_API_KEY'],
     };
 
-    const envVars = envKeyMap[provider] || [`${provider.toUpperCase().replace(/-/g, '_')}_API_KEY`];
-    for (const envVar of envVars) {
+    const envVarNames = envKeyMap[provider] || [`${provider.toUpperCase().replace(/-/g, '_')}_API_KEY`];
+
+    // Check custom env vars first
+    for (const envVar of envVarNames) {
+      const val = customEnv[envVar];
+      if (val) return val;
+    }
+
+    // Then fall back to process.env
+    for (const envVar of envVarNames) {
       const val = process.env[envVar];
       if (val) return val;
     }
@@ -169,11 +187,13 @@ export class AgentService {
     });
     this.agent.setSystemPrompt(systemPrompt);
 
-    // Update tools with new blocklist/bash settings
+    // Update tools with new blocklist/bash settings and custom env
+    const customEnv = parseEnvText(settings.environment.envText);
     const tools = createVaultTools(this.vaultPath, {
       blockedCommands: settings.security.blockedCommands,
       enableBlocklist: settings.security.enableBlocklist,
       bashEnabled: settings.bash.enabled,
+      env: customEnv,
     });
     this.agent.setTools(tools);
   }
@@ -199,10 +219,12 @@ export class AgentService {
     // Compute MCP tools for this query based on @mentions
     if (this.mcp) {
       // Always start with vault-only tools (safe baseline)
+      const queryEnv = parseEnvText(this.settings.environment.envText);
       const vaultTools = createVaultTools(this.vaultPath, {
         blockedCommands: this.settings.security.blockedCommands,
         enableBlocklist: this.settings.security.enableBlocklist,
         bashEnabled: this.settings.bash.enabled,
+        env: queryEnv,
       });
       this.agent.setTools(vaultTools);
 

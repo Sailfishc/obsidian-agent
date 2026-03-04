@@ -1,5 +1,12 @@
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high';
 
+export interface EnvironmentSnippet {
+  name: string;
+  description: string;
+  envText: string;
+  modelContextLimits: Record<string, number>;
+}
+
 export interface CustomOpenAISettings {
   baseUrl: string;     // e.g. http://localhost:11434/v1 or https://api.example.com/v1
   apiKey: string;      // allow empty for local/self-hosted endpoints (Ollama, LM Studio, etc.)
@@ -60,6 +67,12 @@ export interface ObsidianAgentSettings {
     enabled: boolean;
     enableSkillCommands: boolean;
     roots: string[];
+  };
+
+  environment: {
+    envText: string;
+    modelContextLimits: Record<string, number>;
+    snippets: EnvironmentSnippet[];
   };
 
   apiKeys: Record<string, string>;
@@ -127,6 +140,12 @@ export const DEFAULT_SETTINGS: ObsidianAgentSettings = {
     enabled: true,
     enableSkillCommands: true,
     roots: ['.claude/skills', '.agents/skills'],
+  },
+
+  environment: {
+    envText: '',
+    modelContextLimits: {},
+    snippets: [],
   },
 
   apiKeys: {},

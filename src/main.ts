@@ -81,6 +81,8 @@ function normalizeLoadedSettings(loaded: any): ObsidianAgentSettings {
 
       skills: JSON.parse(JSON.stringify(DEFAULT_SETTINGS.skills)),
 
+      environment: JSON.parse(JSON.stringify(DEFAULT_SETTINGS.environment)),
+
       apiKeys: loaded.apiKeys && typeof loaded.apiKeys === 'object'
         ? loaded.apiKeys
         : {},
@@ -106,6 +108,7 @@ function normalizeLoadedSettings(loaded: any): ObsidianAgentSettings {
     instructions: deepMerge(DEFAULT_SETTINGS.instructions, loaded.instructions),
     bash: deepMerge(DEFAULT_SETTINGS.bash, loaded.bash),
     skills: deepMerge(DEFAULT_SETTINGS.skills, loaded.skills),
+    environment: deepMerge(DEFAULT_SETTINGS.environment, loaded.environment),
 
     apiKeys: loaded.apiKeys && typeof loaded.apiKeys === 'object'
       ? loaded.apiKeys

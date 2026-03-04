@@ -1656,3 +1656,108 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── Environment Settings ──────────────────────────────────────────── */
+
+.oa-env-textarea {
+  width: 100%;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  resize: vertical;
+  min-height: 100px;
+  margin-bottom: 12px;
+  padding: 8px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.oa-env-context-limits {
+  margin-top: 8px;
+  margin-bottom: 12px;
+}
+
+.oa-env-snippets-settings {
+  margin-top: 8px;
+}
+
+.oa-env-snippet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.oa-env-snippet-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.oa-env-snippet-label {
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+}
+
+.oa-env-snippet-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 16px;
+  font-size: var(--font-ui-small);
+}
+
+.oa-env-snippet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.oa-env-snippet-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+
+.oa-env-snippet-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.oa-env-snippet-name {
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+}
+
+.oa-env-snippet-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.oa-env-snippet-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Environment Snippet Modal ─────────────────────────────────────── */
+
+.oa-env-snippet-modal {
+  max-width: 500px;
+}
+
+.oa-env-snippet-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}

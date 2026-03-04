@@ -14,6 +14,7 @@ export interface VaultToolsOptions {
   blockedCommands?: { unix: string[]; windows: string[] };
   enableBlocklist?: boolean;
   bashEnabled?: boolean;
+  env?: Record<string, string>;
 }
 
 /**
@@ -49,6 +50,14 @@ export function createVaultTools(vaultPath: string, options?: VaultToolsOptions)
       if (isBlockedCommand(ctx.command, blocked)) {
         throw new Error(`Command blocked by safety settings: ${ctx.command.slice(0, 80)}`);
       }
+    }
+    // Merge custom environment variables into spawn context
+    // Always include process.env as base to avoid dropping PATH, HOME, etc.
+    if (options?.env && Object.keys(options.env).length > 0) {
+      const baseEnv = Object.fromEntries(
+        Object.entries(process.env).filter(([, v]) => typeof v === 'string'),
+      ) as Record<string, string>;
+      ctx.env = { ...baseEnv, ...(ctx.env ?? {}), ...options.env };
     }
     return ctx;
   };

@@ -17,6 +17,7 @@ import { convertToLlm } from '@mariozechner/pi-coding-agent';
 import type { ObsidianAgentSettings, StreamChunk } from '../types';
 import { buildInlineEditSystemPrompt } from '../prompts/inlineEditPrompt';
 import { createReadOnlyVaultTools } from '../tools/vaultTools';
+import { parseEnvText, getContextLimitTokens } from '../../utils/environment';
 
 export interface InlineEditResult {
   kind: 'replacement' | 'insertion' | 'clarification' | 'answer' | 'error';
@@ -99,6 +100,7 @@ export class InlineEditService {
     if (provider === 'custom-openai') {
       const cfg = this.settings.customOpenAI;
       if (!cfg.baseUrl?.trim() || !cfg.modelId?.trim()) return undefined;
+      const limit = getContextLimitTokens(this.settings, 'custom-openai', cfg.modelId.trim());
       return {
         id: cfg.modelId.trim(),
         name: cfg.modelId.trim(),
@@ -108,7 +110,7 @@ export class InlineEditService {
         reasoning: false,
         input: ['text'] as ('text' | 'image')[],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: 128000,
+        contextWindow: limit,
         maxTokens: 8192,
       };
     }
@@ -118,8 +120,12 @@ export class InlineEditService {
     try {
       const allModels = getModels(provider as KnownProvider);
       const found = allModels.find((m) => m.id === modelId);
-      if (found) return found;
-      return allModels.length > 0 ? allModels[0] : undefined;
+      const baseModel = found ?? (allModels.length > 0 ? allModels[0] : undefined);
+      if (!baseModel) return undefined;
+
+      const limit = getContextLimitTokens(this.settings, provider, modelId);
+      const contextWindow = Math.min(baseModel.contextWindow ?? limit, limit);
+      return { ...baseModel, contextWindow };
     } catch {
       return undefined;
     }
@@ -152,8 +158,17 @@ export class InlineEditService {
       zai: ['ZAI_API_KEY'],
     };
 
-    const envVars = envKeyMap[provider] || [`${provider.toUpperCase().replace(/-/g, '_')}_API_KEY`];
-    for (const envVar of envVars) {
+    const envVarNames = envKeyMap[provider] || [`${provider.toUpperCase().replace(/-/g, '_')}_API_KEY`];
+
+    // Check custom env vars from settings first
+    const customEnv = parseEnvText(this.settings.environment.envText);
+    for (const envVar of envVarNames) {
+      const val = customEnv[envVar];
+      if (val) return val;
+    }
+
+    // Fall back to process.env
+    for (const envVar of envVarNames) {
       const val = process.env[envVar];
       if (val) return val;
     }
